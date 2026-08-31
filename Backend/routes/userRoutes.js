@@ -60,6 +60,16 @@ router.put('/location', auth, async (req, res) => {
       },
       isAvailable: true,
     });
+
+    const user = await User.findById(req.user.id);
+    req.io.to('customers').emit('available_driver_location', {
+      driverId: req.user.id,
+      lat: parseFloat(lat),
+      lng: parseFloat(lng),
+      heading: heading || 0,
+      vehicleType: user.vehicleType || 'bike',
+    });
+
     res.json({ msg: 'Location updated' });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -11,7 +11,9 @@ import {
   ScrollView,
   Alert,
   Animated,
+  KeyboardAvoidingView,
 } from 'react-native';
+import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 import MapView, {
   Marker,
   Polyline,
@@ -68,8 +70,8 @@ const VEHICLE_TYPES = [
 // ─────────────────────────────────────────────
 // MAP COMPONENT
 // ─────────────────────────────────────────────
-const MapComponent = () => {
-  const { userLocation, estimate, driverLocation, appState } = useCustomer();
+const MapComponent = ({ isPinPicking, onPinChange }: { isPinPicking: boolean, onPinChange: (loc: {lat: number, lng: number}) => void }) => {
+  const { userLocation, estimate, driverLocation, appState, availableDrivers } = useCustomer();
   const mapRef = useRef<MapView>(null);
 
   useEffect(() => {
@@ -97,13 +99,19 @@ const MapComponent = () => {
   }
 
   return (
-    <MapView
-      ref={mapRef}
-      style={styles.map}
-      provider={PROVIDER_GOOGLE}
-      initialRegion={userLocation}
-      showsUserLocation={true}
-    >
+    <View style={styles.map}>
+      <MapView
+        ref={mapRef}
+        style={StyleSheet.absoluteFillObject}
+        provider={PROVIDER_GOOGLE}
+        initialRegion={userLocation}
+        showsUserLocation={true}
+        onRegionChangeComplete={(region) => {
+          if (isPinPicking) {
+            onPinChange({ lat: region.latitude, lng: region.longitude });
+          }
+        }}
+      >
       {routeCoordinates.length > 0 && (
         <Polyline
           coordinates={routeCoordinates}
@@ -133,6 +141,23 @@ const MapComponent = () => {
         </>
       )}
 
+      {/* Dynamic Nearby Drivers (Pre-booking) */}
+      {(appState === 'IDLE' || appState === 'ESTIMATING') && Object.entries(availableDrivers || {}).map(([id, driver]) => {
+        const vcfg = VEHICLE_TYPES.find(v => v.type === driver.vehicleType);
+        return (
+          <Marker 
+            key={id} 
+            coordinate={{ latitude: driver.lat, longitude: driver.lng }} 
+            anchor={{ x: 0.5, y: 0.5 }}
+            rotation={driver.heading || 0}
+          >
+            <View style={[styles.driverMarker, { backgroundColor: '#f8f8f8', padding: 4, transform: [{ scale: 0.85 }] }]}>
+              <Text style={{ fontSize: 22 }}>{vcfg?.emoji || '🏍️'}</Text>
+            </View>
+          </Marker>
+        );
+      })}
+
       {(appState === 'ACCEPTED' || appState === 'ONGOING') && driverLocation && (
         <Marker coordinate={driverLocation} anchor={{ x: 0.5, y: 0.5 }}>
           <View style={styles.driverMarker}>
@@ -140,36 +165,72 @@ const MapComponent = () => {
           </View>
         </Marker>
       )}
-    </MapView>
+      </MapView>
+
+      {isPinPicking && (
+        <View style={styles.centerPinWrap} pointerEvents="none">
+          <Text style={styles.centerPinIcon}>📍</Text>
+        </View>
+      )}
+    </View>
   );
 };
 
 // ─────────────────────────────────────────────
 // INPUT PANEL (IDLE state)
 // ─────────────────────────────────────────────
-const InputPanel = () => {
-  const { appState, fetchEstimate, userLocation } = useCustomer();
-  const [drop, setDrop] = useState('');
+const InputPanel = ({ isPinPicking, setIsPinPicking, pinLocation }: any) => {
+  const { appState, fetchEstimate, userLocation, googleMapsKey } = useCustomer();
+  const [dropText, setDropText] = useState('');
+  const [dropCoords, setDropCoords] = useState<{lat: number, lng: number} | null>(null);
   const [usingCurrentLocation, setUsingCurrentLocation] = useState(true);
   const [pickupText, setPickupText] = useState('📍 Current Location');
+  const autocompleteRef = useRef<any>(null);
 
   if (appState !== 'IDLE') return null;
 
+  if (isPinPicking) {
+    return (
+      <View style={styles.panel}>
+        <View style={styles.handle} />
+        <Text style={styles.panelTitle}>Pick Location</Text>
+        <Text style={styles.panelSub}>Drag the map to choose your destination</Text>
+        
+        <View style={styles.actionRow}>
+           <TouchableOpacity style={styles.cancelOutlineBtn} onPress={() => setIsPinPicking(false)}>
+             <Text style={styles.cancelOutlineText}>Cancel</Text>
+           </TouchableOpacity>
+           <TouchableOpacity style={styles.confirmBtn} onPress={() => {
+              if(pinLocation) {
+                setDropCoords(pinLocation);
+                const addressStr = `${pinLocation.lat.toFixed(4)}, ${pinLocation.lng.toFixed(4)}`;
+                setDropText(addressStr);
+                if (autocompleteRef.current) {
+                   autocompleteRef.current.setAddressText(addressStr);
+                }
+              }
+              setIsPinPicking(false);
+           }}>
+             <Text style={styles.confirmBtnText}>Confirm Location</Text>
+           </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   const handleFindRide = () => {
-    if (!drop.trim()) {
+    if (!dropText.trim() && !dropCoords) {
       Alert.alert('Missing Drop', 'Please enter your destination.');
       return;
     }
 
-    if (usingCurrentLocation && userLocation) {
-      // Pass current GPS coords as pickup
-      fetchEstimate(
-        { lat: userLocation.latitude, lng: userLocation.longitude },
-        drop.trim()
-      );
-    } else {
-      fetchEstimate(pickupText.trim(), drop.trim());
-    }
+    const finalPickup = usingCurrentLocation && userLocation
+      ? { lat: userLocation.latitude, lng: userLocation.longitude }
+      : pickupText.trim();
+      
+    const finalDrop = dropCoords ? dropCoords : dropText.trim();
+
+    fetchEstimate(finalPickup, finalDrop);
   };
 
   return (
@@ -209,16 +270,50 @@ const InputPanel = () => {
       <View style={styles.connector} />
 
       {/* Drop */}
-      <View style={styles.locationRow}>
-        <View style={[styles.locationDot, { backgroundColor: '#f72585' }]} />
-        <TextInput
-          style={[styles.input, { flex: 1 }]}
-          placeholder="Where to? (city, landmark...)"
-          value={drop}
-          onChangeText={setDrop}
-          returnKeyType="done"
-          onSubmitEditing={handleFindRide}
-        />
+      <View style={[styles.locationRow, { zIndex: 100 }]}>
+        <View style={[styles.locationDot, { backgroundColor: '#f72585', marginTop: 16 }]} />
+        <View style={{flex: 1, flexDirection: 'row', alignItems: 'flex-start'}}>
+          <View style={{flex: 1}}>
+            {googleMapsKey ? (
+              <GooglePlacesAutocomplete
+                ref={autocompleteRef}
+                placeholder="Where to? (city, landmark...)"
+                onPress={(data, details = null) => {
+                  setDropText(data.description);
+                  if(details?.geometry?.location) {
+                    setDropCoords({
+                      lat: details.geometry.location.lat,
+                      lng: details.geometry.location.lng,
+                    });
+                  } else {
+                    setDropCoords(null);
+                  }
+                }}
+                query={{
+                  key: googleMapsKey,
+                  language: 'en',
+                  components: 'country:in',
+                }}
+                fetchDetails={true}
+                styles={{
+                  textInputContainer: { width: '100%' },
+                  textInput: [styles.input, { flex: undefined, height: 48, marginBottom: 0 }],
+                  listView: { position: 'absolute', top: 52, zIndex: 100, backgroundColor: '#fff', elevation: 10, borderRadius: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+                }}
+                enablePoweredByContainer={false}
+                textInputProps={{
+                  onChangeText: (t) => { setDropText(t); setDropCoords(null); },
+                  value: dropText
+                }}
+              />
+            ) : (
+              <ActivityIndicator size="small" color="#f72585" style={{ marginTop: 12 }} />
+            )}
+          </View>
+          <TouchableOpacity style={styles.mapPickBtn} onPress={() => setIsPinPicking(true)}>
+            <Text style={{fontSize: 20}}>🗺️</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <TouchableOpacity style={styles.findBtn} onPress={handleFindRide}>
@@ -449,10 +544,12 @@ export default function CustomerDashboard({ navigation }: any) {
 
 const DashboardContent = ({ navigation }: any) => {
   const { logout } = useCustomer();
+  const [isPinPicking, setIsPinPicking] = useState(false);
+  const [pinLocation, setPinLocation] = useState<{lat: number, lng: number} | null>(null);
 
   return (
     <>
-      <MapComponent />
+      <MapComponent isPinPicking={isPinPicking} onPinChange={setPinLocation} />
 
       {/* Top bar */}
       <View style={styles.topBar}>
@@ -465,10 +562,13 @@ const DashboardContent = ({ navigation }: any) => {
       </View>
 
       {/* Bottom overlay */}
-      <View style={styles.overlay}>
-        <InputPanel />
+      <KeyboardAvoidingView 
+        style={styles.overlay} 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+      >
+        <InputPanel isPinPicking={isPinPicking} setIsPinPicking={setIsPinPicking} pinLocation={pinLocation} />
         <StatusPanel />
-      </View>
+      </KeyboardAvoidingView>
     </>
   );
 };
@@ -479,6 +579,24 @@ const DashboardContent = ({ navigation }: any) => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f0f0f0' },
   map: { flex: 1 },
+  centerPinWrap: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginLeft: -15,
+    marginTop: -30,
+    zIndex: 10,
+  },
+  centerPinIcon: { fontSize: 30 },
+  mapPickBtn: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f8f8f8',
+    borderRadius: 10,
+    marginLeft: 8,
+    width: 48,
+    height: 48,
+  },
   loader: {
     flex: 1,
     justifyContent: 'center',

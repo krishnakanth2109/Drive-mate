@@ -134,7 +134,7 @@ router.post('/create', auth, async (req, res) => {
             type: 'Point',
             coordinates: [pickup.lng, pickup.lat],
           },
-          $maxDistance: 5000,
+          $maxDistance: 3000,
         },
       },
     });
@@ -149,7 +149,7 @@ router.post('/create', auth, async (req, res) => {
             currentLocation: {
               $near: {
                 $geometry: { type: 'Point', coordinates: [pickup.lng, pickup.lat] },
-                $maxDistance: 5000,
+                $maxDistance: 3000,
               },
             },
           });
@@ -161,6 +161,29 @@ router.post('/create', auth, async (req, res) => {
     });
 
     res.json(savedRide);
+
+    // Auto-expire if not accepted in 10 seconds
+    setTimeout(async () => {
+      try {
+        const rideCheck = await Ride.findById(savedRide._id);
+        if (rideCheck && rideCheck.status === 'pending') {
+          rideCheck.status = 'cancelled';
+          await rideCheck.save();
+          
+          // Notify customer
+          req.io.to(rideCheck.customer.toString()).emit('ride_timeout', {
+            rideId: rideCheck._id,
+            message: 'No riders available right now. Please try again.'
+          });
+          
+          // Notify drivers to hide it (optional, but good practice)
+          req.io.to('drivers').emit('ride_taken', { rideId: rideCheck._id });
+        }
+      } catch (err) {
+        console.error('Ride timeout error:', err);
+      }
+    }, 10000);
+
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

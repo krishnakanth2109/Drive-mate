@@ -26,8 +26,9 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
   const [incomingRequest, setIncomingRequest] = useState<Ride | null>(null);
   const [activeRide, setActiveRide] = useState<Ride | null>(null);
   
-  // Location interval reference
+  // Interval & Timeout references
   const locationInterval = useRef<NodeJS.Timeout | null>(null);
+  const requestTimeout = useRef<NodeJS.Timeout | null>(null);
 
   // 1. Initial Permission & Current Location
   useEffect(() => {
@@ -63,14 +64,26 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
       socket.on('new_ride_request', (ride: Ride) => {
         if (!activeRide) {
           setIncomingRequest(ride); 
+          
+          // Auto-hide after 10 seconds
+          if (requestTimeout.current) clearTimeout(requestTimeout.current);
+          requestTimeout.current = setTimeout(() => {
+            setIncomingRequest((current) => {
+              if (current && current._id === ride._id) return null;
+              return current;
+            });
+          }, 10000);
         }
       });
 
       socket.on('ride_taken', ({ rideId }: { rideId: string }) => {
-        if (incomingRequest && incomingRequest._id === rideId) {
-            setIncomingRequest(null);
-            Alert.alert("Missed", "Another driver took the ride.");
-        }
+        setIncomingRequest((current) => {
+           if (current && current._id === rideId) {
+               Alert.alert("Missed", "Ride is no longer available.");
+               return null;
+           }
+           return current;
+        });
       });
 
     } else {
@@ -131,6 +144,8 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
 
   const acceptRide = async () => {
     if (!incomingRequest) return;
+    if (requestTimeout.current) clearTimeout(requestTimeout.current);
+
     try {
       const res = await api.put('/ride/accept', { 
         rideId: incomingRequest._id
@@ -140,7 +155,7 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
       setIncomingRequest(null);
       Alert.alert("Success", "Head to pickup location!");
     } catch (err: any) {
-      Alert.alert("Error", "Ride already taken");
+      Alert.alert("Error", "Ride already taken or expired");
       setIncomingRequest(null);
     }
   };
@@ -175,7 +190,10 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  const rejectRide = () => setIncomingRequest(null);
+  const rejectRide = () => {
+    if (requestTimeout.current) clearTimeout(requestTimeout.current);
+    setIncomingRequest(null);
+  };
 
   const logout = async (nav: any) => {
       setIsOnline(false);

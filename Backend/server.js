@@ -35,6 +35,10 @@ app.use((req, res, next) => {
 app.use('/api/users', userRoutes);
 app.use('/api/ride', rideRoutes);
 
+app.get('/api/config/maps-key', (req, res) => {
+  res.json({ key: process.env.GOOGLE_MAPS_API_KEY });
+});
+
 // --- DB Connection ---
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('✅ MongoDB Connected'))
@@ -56,6 +60,11 @@ io.on('connection', (socket) => {
   // 2. Join General Drivers Room (Optional fallback)
   socket.on('join_drivers_room', () => {
     socket.join('drivers');
+  });
+
+  // 2.5 Join General Customers Room (for nearby driver updates)
+  socket.on('join_customers_room', () => {
+    socket.join('customers');
   });
 
   // 3. Driver Location Update -> Send to Customer

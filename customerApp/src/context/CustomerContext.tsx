@@ -75,9 +75,11 @@ interface CustomerContextType {
   driver: Driver | null;
   activeRide: ActiveRide | null;
   driverLocation: DriverLocation | null;
+  availableDrivers: { [id: string]: { lat: number; lng: number; heading: number; vehicleType: string } };
+  googleMapsKey: string | null;
   fetchEstimate: (
     pickup: string | { lat: number; lng: number },
-    drop: string
+    drop: string | { lat: number; lng: number }
   ) => Promise<void>;
   requestRide: (vehicleType: string) => Promise<void>;
   cancelRide: () => Promise<void>;
@@ -108,6 +110,8 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
   const [driver, setDriver] = useState<Driver | null>(null);
   const [activeRide, setActiveRide] = useState<ActiveRide | null>(null);
   const [driverLocation, setDriverLocation] = useState<DriverLocation | null>(null);
+  const [availableDrivers, setAvailableDrivers] = useState<{ [id: string]: { lat: number; lng: number; heading: number; vehicleType: string } }>({});
+  const [googleMapsKey, setGoogleMapsKey] = useState<string | null>(null);
 
   const activeRideIdRef = useRef<string | null>(null);
 
@@ -146,6 +150,35 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
         });
       }
     })();
+
+    // Fetch initial nearby drivers (approx center of hyderabad if no gps yet)
+    (async () => {
+      try {
+        const res = await api.get('/users/nearby?lat=17.385&lng=78.4867');
+        const initialDrivers: any = {};
+        res.data.forEach((d: any) => {
+          if (d.currentLocation && d.currentLocation.coordinates) {
+            initialDrivers[d._id] = {
+              lat: d.currentLocation.coordinates[1],
+              lng: d.currentLocation.coordinates[0],
+              heading: d.currentLocation.heading || 0,
+              vehicleType: d.vehicleType || 'bike',
+            };
+          }
+        });
+        setAvailableDrivers(initialDrivers);
+      } catch (err) {}
+    })();
+
+    // Fetch Maps Key
+    (async () => {
+      try {
+        const res = await api.get('/config/maps-key');
+        setGoogleMapsKey(res.data.key);
+      } catch (err) {
+        console.warn('Failed to fetch maps key from backend');
+      }
+    })();
   }, []);
 
   // ── Socket listeners ───────────────────────
@@ -156,8 +189,22 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
       if (userId) {
         socket.emit('join_room', userId);
       }
+      socket.emit('join_customers_room');
     };
     setupSocket();
+
+    // Available driver location update (for map)
+    socket.on('available_driver_location', (data: any) => {
+      setAvailableDrivers(prev => ({
+        ...prev,
+        [data.driverId]: {
+          lat: data.lat,
+          lng: data.lng,
+          heading: data.heading,
+          vehicleType: data.vehicleType,
+        }
+      }));
+    });
 
     // Driver accepted our ride
     socket.on('ride_accepted', (data: { ride: ActiveRide; rider: Driver }) => {
@@ -186,10 +233,18 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     );
 
+    // Ride timed out (no drivers accepted in 10s)
+    socket.on('ride_timeout', (data: { rideId: string; message: string }) => {
+      Alert.alert('No Riders Found', data.message);
+      resetFlow();
+    });
+
     return () => {
       socket.off('ride_accepted');
       socket.off('ride_status_update');
       socket.off('driver_location_update');
+      socket.off('available_driver_location');
+      socket.off('ride_timeout');
     };
   }, []);
 
@@ -197,7 +252,7 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
   const fetchEstimate = useCallback(
     async (
       pickup: string | { lat: number; lng: number },
-      drop: string
+      drop: string | { lat: number; lng: number }
     ) => {
       setAppState('ESTIMATING');
       setEstimate(null);
@@ -298,6 +353,8 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
         driver,
         activeRide,
         driverLocation,
+        availableDrivers,
+        googleMapsKey,
         fetchEstimate,
         requestRide,
         cancelRide,

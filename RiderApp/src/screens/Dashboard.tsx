@@ -69,13 +69,21 @@ const MapArea = () => {
     >
 
       {/* Route Line */}
-      {routeCoords.length > 0 && <Polyline coordinates={routeCoords} strokeWidth={4} strokeColor="black" />}
+      {routeCoords.length > 0 && <Polyline coordinates={routeCoords} strokeWidth={5} strokeColor="#f72585" />}
 
       {/* Markers */}
       {activeData && (
         <>
-          <Marker coordinate={{ latitude: activeData.pickup.lat, longitude: activeData.pickup.lng }} title="Pickup" pinColor="green" />
-          <Marker coordinate={{ latitude: activeData.drop.lat, longitude: activeData.drop.lng }} title="Drop" pinColor="red" />
+          <Marker coordinate={{ latitude: activeData.pickup.lat, longitude: activeData.pickup.lng }} title="Pickup">
+            <View style={styles.markerGreen}>
+              <Text style={{ fontSize: 10, color: '#fff', fontWeight: 'bold' }}>FROM</Text>
+            </View>
+          </Marker>
+          <Marker coordinate={{ latitude: activeData.drop.lat, longitude: activeData.drop.lng }} title="Drop">
+            <View style={styles.markerRed}>
+              <Text style={{ fontSize: 10, color: '#fff', fontWeight: 'bold' }}>TO</Text>
+            </View>
+          </Marker>
         </>
       )}
     </MapView>
@@ -241,6 +249,23 @@ const styles = StyleSheet.create({
   loadingMap: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#eee' },
   map: { flex: 1 },
   overlay: { position: 'absolute', top: 50, left: 20, right: 20 },
+  
+  // Map markers
+  markerGreen: {
+    backgroundColor: '#06d6a0',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 6,
+    elevation: 4,
+  },
+  markerRed: {
+    backgroundColor: '#f72585',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 6,
+    elevation: 4,
+  },
+
   headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, borderRadius: 15, elevation: 5, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 5 },
   headerOn: { backgroundColor: '#2ecc71' }, 
   headerOff: { backgroundColor: '#34495e' },
