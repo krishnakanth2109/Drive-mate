@@ -6,24 +6,24 @@ export default function RegisterScreen({ navigation }: any) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleRegister = async () => {
-    if(!name || !email || !phone) return Alert.alert('Error', 'Fill all fields');
+    if(!name || !email || !phone || !password) return Alert.alert('Error', 'Fill all fields');
 
     setLoading(true);
     try {
-      // In this demo, login endpoint handles creation
-      await api.post('/users/login', {
-        name,
-        email,
-        phone,
-        role: 'rider'
+      await api.post('/users/rider/register', {
+        name: name.trim(),
+        email: email.toLowerCase().trim(),
+        phone: phone.trim(),
+        password: password.trim()
       });
       Alert.alert('Success', 'Account created! Please login.');
       navigation.navigate('Login');
     } catch (err: any) {
-      Alert.alert('Error', 'Registration failed');
+      Alert.alert('Error', err.response?.data?.error || 'Registration failed');
     } finally {
       setLoading(false);
     }
@@ -33,9 +33,36 @@ export default function RegisterScreen({ navigation }: any) {
     <View style={styles.container}>
       <Text style={styles.header}>Become a Partner</Text>
       
-      <TextInput style={styles.input} placeholder="Full Name" value={name} onChangeText={setName} />
-      <TextInput style={styles.input} placeholder="Email" value={email} autoCapitalize="none" onChangeText={setEmail} />
-      <TextInput style={styles.input} placeholder="Phone Number" value={phone} keyboardType="phone-pad" onChangeText={setPhone} />
+      <TextInput 
+        style={styles.input} 
+        placeholder="Full Name" 
+        value={name} 
+        autoCapitalize="words"
+        onChangeText={setName} 
+      />
+      <TextInput 
+        style={styles.input} 
+        placeholder="Email Address" 
+        value={email} 
+        autoCapitalize="none" 
+        keyboardType="email-address"
+        onChangeText={setEmail} 
+      />
+      <TextInput 
+        style={styles.input} 
+        placeholder="Phone Number" 
+        value={phone} 
+        keyboardType="phone-pad" 
+        onChangeText={setPhone} 
+      />
+      <TextInput 
+        style={styles.input} 
+        placeholder="Password" 
+        value={password} 
+        secureTextEntry
+        autoCapitalize="none" 
+        onChangeText={setPassword} 
+      />
 
       <TouchableOpacity style={styles.btn} onPress={handleRegister} disabled={loading}>
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Register</Text>}
@@ -51,8 +78,8 @@ export default function RegisterScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: 'center', padding: 30, backgroundColor: '#fff' },
   header: { fontSize: 28, fontWeight: 'bold', marginBottom: 30 },
-  input: { backgroundColor: '#f9f9f9', padding: 18, borderRadius: 12, marginBottom: 15 },
-  btn: { backgroundColor: '#000', padding: 18, borderRadius: 12, alignItems: 'center' },
+  input: { backgroundColor: '#f9f9f9', padding: 16, borderRadius: 12, marginBottom: 15, fontSize: 16 },
+  btn: { backgroundColor: '#000', padding: 18, borderRadius: 12, alignItems: 'center', marginTop: 10 },
   btnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  link: { color: '#007AFF', textAlign: 'center' }
+  link: { color: '#007AFF', textAlign: 'center', fontWeight: '600' }
 });

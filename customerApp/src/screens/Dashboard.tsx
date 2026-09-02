@@ -534,11 +534,9 @@ const StatusPanel = () => {
 // ─────────────────────────────────────────────
 export default function CustomerDashboard({ navigation }: any) {
   return (
-    <CustomerProvider>
-      <View style={styles.container}>
-        <DashboardContent navigation={navigation} />
-      </View>
-    </CustomerProvider>
+    <View style={styles.container}>
+      <DashboardContent navigation={navigation} />
+    </View>
   );
 }
 

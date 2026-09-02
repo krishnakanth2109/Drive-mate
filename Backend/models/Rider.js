@@ -1,18 +1,12 @@
 import mongoose from 'mongoose';
 
-const UserSchema = new mongoose.Schema(
+const RiderSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     phone: { type: String, required: true },
-    password: { type: String },
-
-    role: {
-      type: String,
-      enum: ['customer', 'rider'],
-      default: 'customer',
-      required: true,
-    },
+    password: { type: String, required: true },
+    role: { type: String, default: 'rider' },
 
     // RIDER SPECIFIC
     isAvailable: { type: Boolean, default: false },
@@ -40,6 +34,6 @@ const UserSchema = new mongoose.Schema(
 );
 
 // 2dsphere index enables $near queries
-UserSchema.index({ currentLocation: '2dsphere' });
+RiderSchema.index({ currentLocation: '2dsphere' });
 
-export default mongoose.model('User', UserSchema);
+export default mongoose.model('Rider', RiderSchema);

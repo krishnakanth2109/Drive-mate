@@ -1,6 +1,7 @@
 import express from 'express';
 import Ride from '../models/Ride.js';
-import User from '../models/User.js';
+import Customer from '../models/Customer.js';
+import Rider from '../models/Rider.js';
 import auth from '../middleware/auth.js';
 import { getCoordsFromAddress, getAddressFromCoords, getRouteDetails } from '../services/locationService.js';
 
@@ -124,8 +125,7 @@ router.post('/create', auth, async (req, res) => {
     const fullRide = await Ride.findById(savedRide._id).populate('customer', 'name phone');
 
     // Find nearby drivers matching vehicle type
-    const nearbyDrivers = await User.find({
-      role: 'rider',
+    const nearbyDrivers = await Rider.find({
       isAvailable: true,
       ...(vehicleType && { vehicleType }),
       currentLocation: {
@@ -143,8 +143,7 @@ router.post('/create', auth, async (req, res) => {
     const driversToNotify =
       nearbyDrivers.length > 0
         ? nearbyDrivers
-        : await User.find({
-            role: 'rider',
+        : await Rider.find({
             isAvailable: true,
             currentLocation: {
               $near: {
@@ -203,7 +202,7 @@ router.put('/accept', auth, async (req, res) => {
     ride.status = 'accepted';
     await ride.save();
 
-    const rider = await User.findByIdAndUpdate(riderId, { isAvailable: false }, { new: true });
+    const rider = await Rider.findByIdAndUpdate(riderId, { isAvailable: false }, { new: true });
 
     req.io.to(ride.customer.toString()).emit('ride_accepted', {
       ride,
@@ -241,7 +240,7 @@ router.put('/update-status', auth, async (req, res) => {
     req.io.to(ride.customer.toString()).emit('ride_status_update', { status, ride });
 
     if (status === 'completed') {
-      await User.findByIdAndUpdate(ride.rider, { isAvailable: true });
+      await Rider.findByIdAndUpdate(ride.rider, { isAvailable: true });
     }
 
     res.json({ success: true });
@@ -266,7 +265,7 @@ router.put('/cancel', auth, async (req, res) => {
 
     // Free up rider if one was assigned
     if (ride.rider) {
-      await User.findByIdAndUpdate(ride.rider, { isAvailable: true });
+      await Rider.findByIdAndUpdate(ride.rider, { isAvailable: true });
       req.io.to(ride.rider.toString()).emit('ride_cancelled', { rideId });
     }
 

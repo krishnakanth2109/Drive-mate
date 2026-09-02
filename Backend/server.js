@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 
 import userRoutes from './routes/userRoutes.js';
 import rideRoutes from './routes/rideRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
 
 dotenv.config();
 
@@ -34,6 +35,7 @@ app.use((req, res, next) => {
 // --- Routes ---
 app.use('/api/users', userRoutes);
 app.use('/api/ride', rideRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.get('/api/config/maps-key', (req, res) => {
   res.json({ key: process.env.GOOGLE_MAPS_API_KEY });

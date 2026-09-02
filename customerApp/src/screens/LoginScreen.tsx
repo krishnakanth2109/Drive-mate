@@ -14,51 +14,72 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api, connectSocket, socket } from '../services/api';
 
 export default function LoginScreen({ navigation }: any) {
-  const [email, setEmail]     = useState('');
-  const [name, setName]       = useState('');
-  const [phone, setPhone]     = useState('');
-  const [isNew, setIsNew]     = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [isLogin, setIsLogin] = useState(true);
+  
+  const [name, setName]         = useState('');
+  const [phone, setPhone]       = useState('');
+  const [email, setEmail]       = useState('');
+  const [password, setPassword] = useState('');
+  
+  const [loading, setLoading]     = useState(false);
 
-  const handleLogin = async () => {
-    if (!email.trim()) return Alert.alert('Required', 'Please enter your email.');
-    if (isNew && (!name.trim() || !phone.trim())) {
-      return Alert.alert('Required', 'Please fill all fields.');
-    }
+  const handleAuth = async () => {
+    if (isLogin) {
+      if (!email.trim() || !password.trim()) {
+        return Alert.alert('Required', 'Please fill in Email and Password.');
+      }
+      
+      setLoading(true);
+      try {
+        const res = await api.post('/users/customer/login', {
+          email: email.toLowerCase().trim(),
+          password: password.trim(),
+        });
 
-    setLoading(true);
-    try {
-      const res = await api.post('/users/login', {
-        email: email.toLowerCase().trim(),
-        name: name.trim() || 'Customer',
-        role: 'customer',
-        phone: phone.trim() || '9876543210',
-      });
+        const { token, user } = res.data;
 
-      const { token, user } = res.data;
+        await AsyncStorage.setItem('token', token);
+        await AsyncStorage.setItem('user', JSON.stringify(user));
+        await AsyncStorage.setItem('userId', user._id);
 
-      if (user.role !== 'customer') {
-        Alert.alert('Wrong App', 'This is the customer app. Use the Rider app to login as a rider.');
+        await connectSocket();
+        socket.emit('join_room', user._id);
+
+        navigation.replace('MainTabs');
+      } catch (err: any) {
+        console.error(err);
+        Alert.alert(
+          'Login Failed',
+          err.response?.data?.error || 'Invalid credentials.'
+        );
+      } finally {
         setLoading(false);
-        return;
+      }
+    } else {
+      if (!name.trim() || !phone.trim() || !email.trim() || !password.trim()) {
+        return Alert.alert('Required', 'Please fill in all fields to register.');
       }
 
-      await AsyncStorage.setItem('token', token);
-      await AsyncStorage.setItem('user', JSON.stringify(user));
-      await AsyncStorage.setItem('userId', user._id);
+      setLoading(true);
+      try {
+        await api.post('/users/customer/register', {
+          name: name.trim(),
+          phone: phone.trim(),
+          email: email.toLowerCase().trim(),
+          password: password.trim(),
+        });
 
-      await connectSocket();
-      socket.emit('join_room', user._id);
-
-      navigation.replace('Dashboard');
-    } catch (err: any) {
-      console.error(err);
-      Alert.alert(
-        'Login Failed',
-        err.response?.data?.error || 'Could not connect to server. Check your network.'
-      );
-    } finally {
-      setLoading(false);
+        Alert.alert('Success', 'Account created successfully! You can now log in.');
+        setIsLogin(true); // Switch to login mode
+      } catch (err: any) {
+        console.error(err);
+        Alert.alert(
+          'Registration Failed',
+          err.response?.data?.error || 'Could not register. Check your network.'
+        );
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -79,15 +100,15 @@ export default function LoginScreen({ navigation }: any) {
       {/* Form */}
       <View style={styles.form}>
         <Text style={styles.formTitle}>
-          {isNew ? 'Create Account' : 'Welcome Back'}
+          {isLogin ? 'Welcome Back' : 'Create Account'}
         </Text>
         <Text style={styles.formSub}>
-          {isNew
-            ? 'Fill in your details to get started'
-            : 'Enter your email to continue'}
+          {isLogin
+            ? 'Login to your account to continue'
+            : 'Sign up to get started'}
         </Text>
 
-        {isNew && (
+        {!isLogin && (
           <>
             <Text style={styles.label}>Full Name</Text>
             <TextInput
@@ -120,28 +141,37 @@ export default function LoginScreen({ navigation }: any) {
           autoCorrect={false}
         />
 
+        <Text style={styles.label}>Password</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="••••••••"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+
         <TouchableOpacity
           style={styles.btn}
-          onPress={handleLogin}
+          onPress={handleAuth}
           disabled={loading}
           activeOpacity={0.85}
         >
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.btnText}>
-              {isNew ? 'Sign Up & Continue' : 'Continue →'}
-            </Text>
+            <Text style={styles.btnText}>{isLogin ? 'Login' : 'Register'}</Text>
           )}
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => setIsNew(!isNew)}
+          onPress={() => setIsLogin(!isLogin)}
           style={styles.toggleWrap}
         >
           <Text style={styles.toggleText}>
-            {isNew ? 'Already have an account? ' : "Don't have an account? "}
-            <Text style={styles.toggleLink}>{isNew ? 'Log In' : 'Sign Up'}</Text>
+            {isLogin ? "Don't have an account? " : "Already have an account? "}
+            <Text style={styles.toggleLink}>{isLogin ? 'Sign up' : 'Log in'}</Text>
           </Text>
         </TouchableOpacity>
       </View>
@@ -154,68 +184,68 @@ const styles = StyleSheet.create({
 
   // Hero
   hero: {
-    flex: 0.42,
+    flex: 0.35,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingBottom: 10,
+    paddingBottom: 5,
   },
   heroBadge: {
-    width: 80,
-    height: 80,
-    borderRadius: 24,
+    width: 60,
+    height: 60,
+    borderRadius: 20,
     backgroundColor: '#f72585',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 10,
     shadowColor: '#f72585',
     shadowOpacity: 0.6,
-    shadowRadius: 20,
-    elevation: 10,
+    shadowRadius: 15,
+    elevation: 8,
   },
-  heroEmoji: { fontSize: 38 },
+  heroEmoji: { fontSize: 30 },
   heroTitle: {
-    fontSize: 40,
+    fontSize: 32,
     fontWeight: '900',
     color: '#fff',
-    letterSpacing: 6,
+    letterSpacing: 4,
   },
-  heroSub: { color: 'rgba(255,255,255,0.5)', fontSize: 14, marginTop: 6 },
+  heroSub: { color: 'rgba(255,255,255,0.5)', fontSize: 13, marginTop: 4 },
 
   // Form
   form: {
-    flex: 0.58,
+    flex: 0.65,
     backgroundColor: '#fff',
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
-    padding: 28,
-    paddingTop: 32,
+    padding: 24,
+    paddingTop: 28,
   },
-  formTitle: { fontSize: 24, fontWeight: '800', color: '#1a1a2e', marginBottom: 4 },
-  formSub: { fontSize: 13, color: '#aaa', marginBottom: 24 },
-  label: { fontSize: 12, fontWeight: '700', color: '#888', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
+  formTitle: { fontSize: 24, fontWeight: '800', color: '#1a1a2e', marginBottom: 2 },
+  formSub: { fontSize: 13, color: '#aaa', marginBottom: 20 },
+  label: { fontSize: 11, fontWeight: '700', color: '#888', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
   input: {
     backgroundColor: '#f4f4f8',
     borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 15,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
     color: '#1a1a2e',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   btn: {
     backgroundColor: '#f72585',
-    borderRadius: 14,
-    paddingVertical: 16,
+    borderRadius: 12,
+    paddingVertical: 14,
     alignItems: 'center',
-    marginTop: 4,
-    marginBottom: 16,
+    marginTop: 8,
+    marginBottom: 12,
     shadowColor: '#f72585',
     shadowOpacity: 0.4,
-    shadowRadius: 10,
+    shadowRadius: 8,
     elevation: 6,
   },
-  btnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
-  toggleWrap: { alignItems: 'center' },
+  btnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+  toggleWrap: { alignItems: 'center', marginTop: 10 },
   toggleText: { color: '#aaa', fontSize: 14 },
   toggleLink: { color: '#f72585', fontWeight: '700' },
 });

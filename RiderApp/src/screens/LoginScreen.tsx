@@ -10,28 +10,21 @@ type LoginScreenProps = {
 
 export default function LoginScreen({ navigation }: LoginScreenProps) {
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
-    if (!email) return Alert.alert('Error', 'Please enter email');
+    if (!email || !password) return Alert.alert('Error', 'Please enter email and password');
     
     setLoading(true);
     try {
-      // 1. Create/Login User via Backend
-      const res = await api.post('/users/login', { 
-        email: email.toLowerCase(), 
-        name: "Rider " + Math.floor(Math.random() * 100), 
-        role: 'rider',
-        phone: "9876543210",
-        currentLocation: { lat: 0, lng: 0 }
+      // 1. Login User via Backend
+      const res = await api.post('/users/rider/login', { 
+        email: email.toLowerCase().trim(),
+        password: password.trim()
       });
 
       const { token, user } = res.data;
-
-      if (user.role !== 'rider') {
-        setLoading(false);
-        return Alert.alert('Access Denied', 'This account is not a Rider.');
-      }
 
       // 2. Store Data
       await AsyncStorage.setItem('token', token);
@@ -45,7 +38,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       navigation.replace('Dashboard');
     } catch (err: any) {
       console.log(err);
-      Alert.alert('Error', 'Login failed. Check server.');
+      Alert.alert('Error', err.response?.data?.error || 'Login failed. Check credentials.');
     } finally {
       setLoading(false);
     }
@@ -62,14 +55,24 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
         
         <TextInput 
           style={styles.input} 
-          placeholder="Enter Email Address" 
+          placeholder="Email Address" 
           value={email} 
           autoCapitalize="none"
+          keyboardType="email-address"
           onChangeText={setEmail} 
         />
         
+        <TextInput 
+          style={styles.input} 
+          placeholder="Password" 
+          value={password} 
+          secureTextEntry
+          autoCapitalize="none"
+          onChangeText={setPassword} 
+        />
+        
         <TouchableOpacity style={styles.btn} onPress={handleLogin} disabled={loading}>
-          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Start Driving</Text>}
+          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Login & Start Driving</Text>}
         </TouchableOpacity>
         
         <TouchableOpacity onPress={() => navigation.navigate('Register')}>
@@ -82,13 +85,13 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
-  banner: { flex: 0.4, justifyContent: 'center', alignItems: 'center', backgroundColor: '#ffd700' },
+  banner: { flex: 0.35, justifyContent: 'center', alignItems: 'center', backgroundColor: '#ffd700' },
   emoji: { fontSize: 80 },
-  content: { flex: 0.6, backgroundColor: 'white', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 30, marginTop: -30 },
+  content: { flex: 0.65, backgroundColor: 'white', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 30, marginTop: -30 },
   header: { fontSize: 28, fontWeight: 'bold', marginBottom: 5 },
-  subHeader: { color: 'gray', marginBottom: 30 },
-  input: { backgroundColor: '#f2f2f2', padding: 18, borderRadius: 12, marginBottom: 20, fontSize: 16 },
-  btn: { backgroundColor: '#000', padding: 18, borderRadius: 12, alignItems: 'center' },
+  subHeader: { color: 'gray', marginBottom: 25 },
+  input: { backgroundColor: '#f2f2f2', padding: 16, borderRadius: 12, marginBottom: 15, fontSize: 16 },
+  btn: { backgroundColor: '#000', padding: 18, borderRadius: 12, alignItems: 'center', marginTop: 5 },
   btnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  link: { marginTop: 20, textAlign: 'center', color: '#007AFF' }
+  link: { marginTop: 25, textAlign: 'center', color: '#007AFF', fontWeight: '600' }
 });
