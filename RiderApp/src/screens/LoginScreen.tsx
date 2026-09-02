@@ -35,7 +35,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       socket.emit('join_drivers_room'); 
       socket.emit('join_room', user._id);
 
-      navigation.replace('Dashboard');
+      navigation.replace('MainTabs');
     } catch (err: any) {
       console.log(err);
       Alert.alert('Error', err.response?.data?.error || 'Login failed. Check credentials.');

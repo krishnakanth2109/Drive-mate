@@ -230,17 +230,15 @@ const BottomPanel = () => {
 // --- MAIN SCREEN ---
 export default function RiderDashboard({navigation}: any) {
   return (
-    <RiderProvider>
-      <View style={styles.container}>
-        <MapArea />
-        <View style={styles.overlay}>
-          <HeaderToggle navigation={navigation} />
-        </View>
-        <View style={styles.bottomContainer}>
-          <BottomPanel />
-        </View>
+    <View style={styles.container}>
+      <MapArea />
+      <View style={styles.overlay}>
+        <HeaderToggle navigation={navigation} />
       </View>
-    </RiderProvider>
+      <View style={styles.bottomContainer}>
+        <BottomPanel />
+      </View>
+    </View>
   );
 }
 
