@@ -32,8 +32,8 @@ export function MasterDashboard() {
           axios.get(`${API_URL}/admin/recent-rides`, config)
         ]);
 
-        setStats(statsRes.data);
-        setRecentRides(ridesRes.data);
+        setStats(statsRes.data.data);
+        setRecentRides(ridesRes.data.data);
       } catch (err) {
         if (err.response?.status === 401 || err.response?.status === 403) {
           sessionStorage.removeItem('vlt_master_token');

@@ -18,7 +18,7 @@ export async function fetchApi(endpoint, options = {}) {
     try {
       const data = await response.json();
       errorMessage = data.detail || errorMessage;
-    } catch (e) {
+    } catch {
       // Ignored
     }
     throw new Error(errorMessage);
@@ -26,7 +26,8 @@ export async function fetchApi(endpoint, options = {}) {
 
   const contentType = response.headers.get('content-type');
   if (contentType && contentType.includes('application/json')) {
-    return response.json();
+    const json = await response.json();
+    return json.data !== undefined ? json.data : json;
   }
   return response.text();
 }

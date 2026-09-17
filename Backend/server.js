@@ -4,11 +4,13 @@ import cors from 'cors';
 import http from 'http';
 import { Server } from 'socket.io';
 import dotenv from 'dotenv';
+import { connectRedis } from './config/redis.js';
 
 import userRoutes from './routes/userRoutes.js';
 import rideRoutes from './routes/rideRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import profileRoutes from './routes/profileRoutes.js';
+import rbacRoutes from './routes/rbacRoutes.js';
 
 dotenv.config();
 
@@ -33,20 +35,31 @@ app.use((req, res, next) => {
   next();
 });
 
+import { errorHandler } from './middleware/errorHandler.js';
+
 // --- Routes ---
 app.use('/api/users', userRoutes);
 app.use('/api/ride', rideRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/profile', profileRoutes);
+app.use('/api/rbac', rbacRoutes);
 
 app.get('/api/config/maps-key', (req, res) => {
   res.json({ key: process.env.GOOGLE_MAPS_API_KEY });
 });
 
+// --- Global Error Handler ---
+app.use(errorHandler);
+
 // --- DB Connection ---
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('✅ MongoDB Connected'))
   .catch(err => console.log('❌ DB Error:', err));
+
+// --- Redis Connection ---
+connectRedis()
+  .then(() => console.log('✅ Redis Connected'))
+  .catch(err => console.log('❌ Redis Error:', err));
 
 // --- Socket Logic ---
 io.on('connection', (socket) => {
@@ -71,11 +84,19 @@ io.on('connection', (socket) => {
     socket.join('customers');
   });
 
-  // 3. Driver Location Update -> Send to Customer
+  // 3. Join Ride Room (For targeted ride updates)
+  socket.on('join_ride', (rideId) => {
+    if(rideId) {
+        socket.join(`ride_${rideId}`);
+        console.log(`Socket ${socket.id} joined ride room: ride_${rideId}`);
+    }
+  });
+
+  // 4. Driver Location Update -> Send to Ride Room
   socket.on('driver_location_update', (data) => {
-    const { customerId, lat, lng, heading } = data;
-    // Send directly to the specific customer
-    io.to(customerId).emit('driver_location_update', {
+    const { rideId, lat, lng, heading } = data;
+    // Send to everyone in the ride room (e.g., the customer)
+    io.to(`ride_${rideId}`).emit('driver_location_update', {
       lat,
       lng,
       heading

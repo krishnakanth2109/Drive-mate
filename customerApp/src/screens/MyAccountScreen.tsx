@@ -7,6 +7,7 @@ import { useCustomer } from '../context/CustomerContext';
 export default function MyAccountScreen({ navigation }: any) {
   const { logout } = useCustomer();
   const [userData, setUserData] = useState<{name: string, phone: string} | null>(null);
+  const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -36,26 +37,47 @@ export default function MyAccountScreen({ navigation }: any) {
   ];
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+    <SafeAreaView style={[styles.safeArea, isDark && styles.safeAreaDark]}>
+      <ScrollView style={[styles.container, isDark && styles.containerDark]} contentContainerStyle={styles.scrollContent}>
         
         {/* Header */}
-        <Text style={styles.headerTitle}>Profile</Text>
+        <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>Profile</Text>
 
         {/* Profile Card */}
-        <TouchableOpacity style={styles.profileCard}>
+        <TouchableOpacity style={[styles.profileCard, isDark && styles.profileCardDark]}>
           <View style={styles.profileLeft}>
             <View style={styles.avatarContainer}>
               <Ionicons name="person" size={28} color="#3b5998" />
-              {/* Optional border arc styling would go here */}
             </View>
             <View style={styles.profileInfo}>
-              <Text style={styles.profileName}>{userData?.name || 'Loading...'}</Text>
+              <Text style={[styles.profileName, isDark && styles.textDark]}>{userData?.name || 'Loading...'}</Text>
               <Text style={styles.profilePhone}>{userData?.phone || 'Loading...'}</Text>
             </View>
           </View>
-          <Ionicons name="chevron-forward" size={20} color="#333" />
+          <Ionicons name="chevron-forward" size={20} color={isDark ? "#fff" : "#333"} />
         </TouchableOpacity>
+
+        {/* Theme Toggle */}
+        <View style={[styles.themeCard, isDark && styles.themeCardDark]}>
+          <Text style={[styles.themeTitle, isDark && styles.textDark]}>App Theme</Text>
+          <View style={styles.themeOptions}>
+            <TouchableOpacity 
+              style={[styles.themeBtn, !isDark && styles.themeBtnActive]} 
+              onPress={() => setIsDark(false)}
+            >
+              <Ionicons name="sunny-outline" size={20} color={!isDark ? "#fff" : "#666"} />
+              <Text style={[styles.themeBtnText, !isDark && styles.themeBtnTextActive]}>Light</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.themeBtn, isDark && styles.themeBtnActiveDark]} 
+              onPress={() => setIsDark(true)}
+            >
+              <Ionicons name="moon-outline" size={20} color={isDark ? "#fff" : "#666"} />
+              <Text style={[styles.themeBtnText, isDark && styles.themeBtnTextActive]}>Dark</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
         {/* Menu Items */}
         <View style={styles.menuContainer}>
@@ -64,6 +86,7 @@ export default function MyAccountScreen({ navigation }: any) {
               key={item.id} 
               style={[
                 styles.menuItem, 
+                isDark && styles.menuItemDark,
                 index === menuItems.length - 1 ? styles.menuItemLast : null
               ]}
               onPress={() => {
@@ -78,15 +101,15 @@ export default function MyAccountScreen({ navigation }: any) {
                 <View style={styles.iconContainer}>
                   <Ionicons name={item.icon as any} size={22} color="#3b5998" />
                 </View>
-                <Text style={styles.menuItemText}>{item.title}</Text>
+                <Text style={[styles.menuItemText, isDark && styles.textDark]}>{item.title}</Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color="#999" />
+              <Ionicons name="chevron-forward" size={20} color={isDark ? "#666" : "#999"} />
             </TouchableOpacity>
           ))}
         </View>
 
         {/* Logout Button */}
-        <TouchableOpacity style={styles.logoutBtn} onPress={() => logout(navigation)}>
+        <TouchableOpacity style={[styles.logoutBtn, isDark && styles.logoutBtnDark]} onPress={() => logout(navigation)}>
           <Text style={styles.logoutText}>Log Out</Text>
         </TouchableOpacity>
 
@@ -101,9 +124,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     paddingTop: Platform.OS === 'android' ? 30 : 0,
   },
+  safeAreaDark: {
+    backgroundColor: '#111',
+  },
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  containerDark: {
+    backgroundColor: '#111',
   },
   scrollContent: {
     paddingBottom: 40,
@@ -115,6 +144,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginTop: 15,
     marginBottom: 20,
+  },
+  headerTitleDark: {
+    color: '#fff',
   },
   profileCard: {
     flexDirection: 'row',
@@ -133,6 +165,64 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
     elevation: 3,
     marginBottom: 25,
+  },
+  profileCardDark: {
+    backgroundColor: '#1c1c1e',
+    borderColor: '#333',
+  },
+  textDark: {
+    color: '#fff',
+  },
+  themeCard: {
+    marginHorizontal: 16,
+    padding: 16,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#eee',
+    marginBottom: 25,
+  },
+  themeCardDark: {
+    backgroundColor: '#1c1c1e',
+    borderColor: '#333',
+  },
+  themeTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 12,
+  },
+  themeOptions: {
+    flexDirection: 'row',
+    backgroundColor: '#f0f4f8',
+    borderRadius: 8,
+    padding: 4,
+  },
+  themeOptionsDark: {
+    backgroundColor: '#000',
+  },
+  themeBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 6,
+  },
+  themeBtnActive: {
+    backgroundColor: '#3b5998',
+  },
+  themeBtnActiveDark: {
+    backgroundColor: '#2c2c2e',
+  },
+  themeBtnText: {
+    marginLeft: 6,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  themeBtnTextActive: {
+    color: '#fff',
   },
   profileLeft: {
     flexDirection: 'row',
@@ -173,6 +263,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#f2f2f2',
   },
+  menuItemDark: {
+    borderBottomColor: '#333',
+  },
   menuItemLast: {
     borderBottomWidth: 0,
   },
@@ -199,6 +292,10 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     borderRadius: 12,
     alignItems: 'center',
+  },
+  logoutBtnDark: {
+    backgroundColor: '#1c1c1e',
+    borderColor: '#333',
   },
   logoutText: {
     color: '#f72585',

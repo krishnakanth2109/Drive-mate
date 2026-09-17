@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-export default function TravelScreen() {
+export default function TravelScreen({ navigation }: any) {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.hero}>
@@ -30,7 +30,7 @@ export default function TravelScreen() {
           </View>
         </View>
         
-        <TouchableOpacity style={styles.btn}>
+        <TouchableOpacity style={styles.btn} onPress={() => navigation.navigate('OutstationOptIn')}>
           <Text style={styles.btnText}>Opt-in for Outstation Rides</Text>
         </TouchableOpacity>
       </View>

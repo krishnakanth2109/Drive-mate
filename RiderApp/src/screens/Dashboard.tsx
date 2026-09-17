@@ -96,10 +96,10 @@ const HeaderToggle = ({navigation}: any) => {
 
   return (
     <View style={[styles.headerContainer, isOnline ? styles.headerOn : styles.headerOff]}>
-      <TouchableOpacity onPress={() => logout(navigation)}>
-          <Text style={styles.logoutText}>Logout</Text>
+      <TouchableOpacity onPress={() => navigation.openDrawer()} style={styles.menuButton}>
+        <Text style={{fontSize: 24, color: 'white'}}>☰</Text>
       </TouchableOpacity>
-      <View style={{alignItems: 'center'}}>
+      <View style={{alignItems: 'center', flex: 1}}>
         <Text style={styles.headerTitle}>{isOnline ? 'YOU ARE ONLINE' : 'YOU ARE OFFLINE'}</Text>
         <Text style={styles.headerSub}>{isOnline ? 'Searching for rides...' : 'Go online to start'}</Text>
       </View>
@@ -270,6 +270,7 @@ const styles = StyleSheet.create({
   headerTitle: { color: 'white', fontWeight: 'bold', fontSize: 16 },
   headerSub: { color: 'rgba(255,255,255,0.8)', fontSize: 12 },
   logoutText: { color: 'white', fontWeight: 'bold', fontSize: 12 },
+  menuButton: { padding: 5, paddingRight: 15 },
 
   bottomContainer: { position: 'absolute', bottom: 0, width: '100%' },
   panel: { backgroundColor: 'white', padding: 20, borderTopLeftRadius: 20, borderTopRightRadius: 20, elevation: 15, minHeight: 100 },

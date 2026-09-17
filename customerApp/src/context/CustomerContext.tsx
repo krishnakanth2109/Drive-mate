@@ -211,6 +211,7 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
       setDriver(data.rider);
       setActiveRide(data.ride);
       activeRideIdRef.current = data.ride._id;
+      socket.emit('join_ride', data.ride._id);
       setAppState('ACCEPTED');
     });
 
@@ -306,6 +307,7 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
         });
 
         activeRideIdRef.current = res.data._id;
+        socket.emit('join_ride', res.data._id);
       } catch (err: any) {
         const msg = err.response?.data?.error || 'Could not book ride.';
         Alert.alert('Booking Failed', msg);

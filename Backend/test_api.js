@@ -23,7 +23,7 @@ async function runTests() {
       })
     });
     let data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to register');
+    if (!res.ok) throw new Error(data.message || 'Failed to register');
     console.log('  ✅ Success\n');
 
     // 2. LOGIN CUSTOMER
@@ -34,8 +34,8 @@ async function runTests() {
       body: JSON.stringify({ email: dummyEmail, password: dummyPassword })
     });
     data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to login');
-    token = data.token;
+    if (!res.ok) throw new Error(data.message || 'Failed to login');
+    token = data.data.token;
     console.log('  ✅ Success (JWT Token Received)\n');
 
     // 3. FETCH PROFILE BALANCES
@@ -45,8 +45,8 @@ async function runTests() {
       headers: { 'x-auth-token': token }
     });
     data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to fetch balances');
-    console.log(`  ✅ Success (Wallet: ₹${data.walletBalance}, Coins: ${data.coinBalance})\n`);
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch balances');
+    console.log(`  ✅ Success (Wallet: ₹${data.data.walletBalance}, Coins: ${data.data.coinBalance})\n`);
 
     // 4. TOP-UP WALLET
     console.log(`[4/5] Topping up Wallet with ₹500...`);
@@ -56,8 +56,8 @@ async function runTests() {
       body: JSON.stringify({ amount: 500, paymentMethod: 'UPI' })
     });
     data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to top-up wallet');
-    console.log(`  ✅ Success (New Balance: ₹${data.walletBalance})\n`);
+    if (!res.ok) throw new Error(data.message || 'Failed to top-up wallet');
+    console.log(`  ✅ Success (New Balance: ₹${data.data.balance})\n`);
 
     // 5. SUBSCRIBE TO POWER PASS
     console.log(`[5/5] Subscribing to Power Pass (Pro)...`);
@@ -67,7 +67,7 @@ async function runTests() {
       body: JSON.stringify({ tier: 'Pro', durationMonths: 3 })
     });
     data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to subscribe to Power Pass');
+    if (!res.ok) throw new Error(data.message || 'Failed to subscribe to Power Pass');
     console.log(`  ✅ Success (Pass is now Active)\n`);
 
     console.log('🎉 ALL TESTS PASSED SUCCESSFULLY! The backend is fully functional.');

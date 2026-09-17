@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Menu, X, Shield, Zap, Star, ChevronRight, Smartphone } from 'lucide-react';
 import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion';
+import { Navbar } from '../components/Navbar';
 
 export function LandingPage() {
   const navigate = useNavigate();
@@ -35,6 +36,13 @@ export function LandingPage() {
     }
   };
 
+  const navLinks = [
+    { name: 'About Us', path: '/about' },
+    { name: 'Customer App', path: '/customer' },
+    { name: 'Safety', path: '/safety' },
+    { name: 'Support', path: '/support' }
+  ];
+
   return (
     <div className="min-h-screen bg-[#030712] relative overflow-hidden font-sans text-slate-100 selection:bg-[#38c6ec] selection:text-white">
       
@@ -42,75 +50,7 @@ export function LandingPage() {
       <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-[#38c6ec]/20 blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-500/10 blur-[120px] pointer-events-none" />
 
-      {/* Floating Navbar */}
-      <motion.nav 
-        initial={{ y: -100, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-        className={`fixed top-6 left-1/2 -translate-x-1/2 w-[95%] max-w-6xl rounded-full px-6 py-3 flex items-center justify-between z-50 transition-all duration-300 ${scrolled ? 'bg-black/80 backdrop-blur-xl shadow-2xl ring-1 ring-white/10' : 'bg-transparent'}`}
-      >
-        <div className="flex items-center gap-3">
-          <motion.div whileHover={{ rotate: 180 }} transition={{ duration: 0.5 }}>
-            <svg className="w-8 h-8 text-[#38c6ec]" viewBox="0 0 26 25" fill="none">
-              <path fillRule="evenodd" d="M9.45 24.95 L7.07 24.09 L5.56 23.30 L3.33 21.03 L2.31 19.44 L0.74 16.05 L0.27 13.91 L0.29 11.25 L0.80 8.75 L1.95 6.20 L3.26 4.50 L5.15 2.67 L7.77 1.02 L9.91 0.18 L12.16 -0.20 L15.22 -0.16 L17.61 0.35 L19.30 1.06 L20.88 2.06 L22.23 3.37 L24.01 5.48 L24.76 6.58 L25.70 8.63 L26.00 10.35 L26.02 11.35 L25.54 12.12 L24.96 12.32 L22.35 12.36 L21.46 12.18 L20.78 11.85 L20.32 11.37 L19.45 9.56 L17.88 7.58 L16.59 6.60 L14.59 5.84 L13.24 5.69 L11.54 5.93 L10.47 6.44 L9.12 7.35 L7.92 8.50 L6.70 10.55 L6.26 12.65 L6.41 14.36 L7.14 15.86 L8.63 17.79 L12.57 20.70 L12.96 21.60 L13.13 22.82 L12.93 24.36 L12.65 24.86 L12.03 25.35 L11.27 25.42 L9.45 24.95 Z M24.55 25.53 L22.49 24.77 L19.56 23.18 L18.15 22.07 L16.63 20.48 L16.14 19.79 L15.63 18.71 L14.66 15.66 L14.59 14.50 L14.75 13.92 L15.12 13.45 L15.85 13.10 L16.91 12.88 L18.90 12.85 L19.49 13.04 L19.94 13.38 L20.25 13.88 L20.86 15.66 L21.97 17.30 L23.05 18.22 L25.00 19.43 L26.05 20.27 L26.34 20.66 L26.63 21.86 L26.51 23.68 L25.79 25.10 L25.35 25.42 L24.55 25.53 Z" fill="currentColor"/>
-            </svg>
-          </motion.div>
-          <span className="font-bold text-xl tracking-tight text-white">DriveMate<span className="text-[#38c6ec]">.</span></span>
-        </div>
-
-        <div className="hidden md:flex items-center gap-8 font-medium text-sm text-slate-300">
-          {['Rider App', 'Customer App', 'Safety', 'Support'].map((item) => (
-            <a key={item} href="#" className="hover:text-white transition-colors relative group">
-              {item}
-              <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-[#38c6ec] transition-all group-hover:w-full"></span>
-            </a>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-4">
-          <motion.button 
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => navigate('/master')} 
-            className="hidden md:block bg-white text-black font-bold text-sm px-6 py-2.5 rounded-full hover:bg-slate-200 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.2)]"
-          >
-            Admin Login
-          </motion.button>
-          
-          <button 
-            className="md:hidden p-2 text-slate-300 hover:text-white bg-white/10 rounded-full backdrop-blur-md"
-            onClick={() => setNavOpen(!navOpen)}
-          >
-            {navOpen ? <X size={20} /> : <Menu size={20} />}
-          </button>
-        </div>
-      </motion.nav>
-
-      {/* Mobile Menu */}
-      <AnimatePresence>
-        {navOpen && (
-          <motion.div 
-            initial={{ opacity: 0, y: -20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -20, scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-            className="fixed top-24 left-1/2 -translate-x-1/2 w-[90%] bg-slate-900/95 backdrop-blur-xl text-white rounded-3xl p-6 flex flex-col gap-4 z-50 md:hidden border border-white/10 shadow-2xl"
-          >
-            {['Rider App', 'Customer App', 'Safety', 'Support'].map((item) => (
-              <a key={item} href="#" className="text-lg font-medium py-3 border-b border-white/5 flex items-center justify-between group" onClick={() => setNavOpen(false)}>
-                {item}
-                <ChevronRight size={18} className="text-slate-500 group-hover:text-white transition-colors" />
-              </a>
-            ))}
-            <button 
-              onClick={() => navigate('/master')} 
-              className="bg-[#38c6ec] text-black font-bold py-4 mt-4 rounded-xl text-lg hover:bg-[#2bb5da] transition-colors"
-            >
-              Admin Login
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <Navbar />
 
       {/* Hero Section */}
       <main className="relative z-10 pt-40 md:pt-52 pb-20 px-6 flex flex-col items-center text-center">

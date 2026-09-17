@@ -24,8 +24,8 @@ export function MasterAuth() {
         password,
       });
 
-      sessionStorage.setItem('vlt_master_token', response.data.token);
-      sessionStorage.setItem('vlt_master_user', JSON.stringify(response.data.user));
+      sessionStorage.setItem('vlt_master_token', response.data.data.token);
+      sessionStorage.setItem('vlt_master_user', JSON.stringify(response.data.data.user));
       navigate('/master/dashboard');
     } catch (err) {
       setError(err.response?.data?.msg || 'Invalid credentials or unauthorized access');

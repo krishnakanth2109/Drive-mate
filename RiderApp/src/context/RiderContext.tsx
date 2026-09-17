@@ -119,7 +119,7 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
             // If active ride, send to customer via socket
             if(activeRide) {
                 socket.emit('driver_location_update', {
-                    customerId: activeRide.customer._id,
+                    rideId: activeRide._id,
                     lat: latitude,
                     lng: longitude,
                     heading
@@ -152,6 +152,7 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
       });
 
       setActiveRide(res.data.ride);
+      socket.emit('join_ride', res.data.ride._id);
       setIncomingRequest(null);
       Alert.alert("Success", "Head to pickup location!");
     } catch (err: any) {

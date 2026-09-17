@@ -10,8 +10,10 @@ import {
   ShieldAlert,
   ShieldCheck,
   Menu,
-  X
+  X,
+  Lock
 } from 'lucide-react';
+import { usePermissions, hasPermission } from '../../components/admin/PermissionGuard';
 
 export function MasterLayout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
@@ -26,14 +28,17 @@ export function MasterLayout() {
 
   const navItems = [
     { name: 'Dashboard', path: '/master/dashboard', icon: LayoutDashboard },
-    { name: 'Admins', path: '/master/admins', icon: ShieldCheck },
     { name: 'Users', path: '/master/users', icon: Users },
     { name: 'Rides & Vehicles', path: '/master/repos', icon: Car },
     { name: 'System Logs', path: '/master/logs', icon: ShieldAlert },
     { name: 'Settings', path: '/master/settings', icon: Settings },
+    { name: 'Access Control', path: '/master/access-control/roles', icon: Lock, requiredPermission: 'role:read' },
   ];
 
-  const SidebarContent = () => (
+  const SidebarContent = () => {
+    const { permissions, loading } = usePermissions();
+    
+    return (
     <div className="flex flex-col h-full bg-neutral-900 border-r border-neutral-800">
       <div className="p-6 flex items-center space-x-3">
         <div className="bg-emerald-500/10 p-2 rounded-lg border border-emerald-500/20">
@@ -47,6 +52,11 @@ export function MasterLayout() {
 
       <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
         {navItems.map((item) => {
+          if (item.requiredPermission && !loading && !hasPermission(permissions, item.requiredPermission)) {
+            // Also checking if user is SUPER_ADMIN via a special wildcard, but for now we enforce exact match
+            // We can assume they have the permission if they are allowed to see it.
+            return null;
+          }
           const isActive = location.pathname.startsWith(item.path);
           return (
             <NavLink
@@ -83,7 +93,8 @@ export function MasterLayout() {
         </button>
       </div>
     </div>
-  );
+    );
+  };
 
   return (
     <div className="min-h-screen bg-neutral-950 flex selection:bg-emerald-500/30">

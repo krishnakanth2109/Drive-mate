@@ -20,6 +20,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.drivemate.customer",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -30,6 +31,11 @@
         "googleMaps": {
           "apiKey": "AIzaSyDOMtmUqwZCLcEHSGQI4WpBLnvBiEPmX2E"
         }
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "87a97c37-64b4-49a2-8547-8c2024679dec"
       }
     }
   }
