@@ -49,8 +49,8 @@ export default function LoginScreen({ navigation }: any) {
       } catch (err: any) {
         console.error(err);
         Alert.alert(
-          'Login Failed',
-          err.response?.data?.error || 'Invalid credentials.'
+          'Login Error',
+          err.response?.data?.message || 'Invalid credentials.'
         );
       } finally {
         setLoading(false);
@@ -74,8 +74,8 @@ export default function LoginScreen({ navigation }: any) {
       } catch (err: any) {
         console.error(err);
         Alert.alert(
-          'Registration Failed',
-          err.response?.data?.error || 'Could not register. Check your network.'
+          'Registration Error',
+          err.response?.data?.message || 'Could not register. Check your network.'
         );
       } finally {
         setLoading(false);

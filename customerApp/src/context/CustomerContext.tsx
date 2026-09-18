@@ -170,13 +170,13 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
       } catch (err) {}
     })();
 
-    // Fetch Maps Key
+    // Fetch Google Maps API key from backend
     (async () => {
       try {
         const res = await api.get('/config/maps-key');
-        setGoogleMapsKey(res.data.key);
-      } catch (err) {
-        console.warn('Failed to fetch maps key from backend');
+        setGoogleMapsKey(res.data.key || res.data);
+      } catch (e) {
+        console.log('Failed to fetch maps key', e);
       }
     })();
   }, []);
@@ -309,7 +309,7 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
         activeRideIdRef.current = res.data._id;
         socket.emit('join_ride', res.data._id);
       } catch (err: any) {
-        const msg = err.response?.data?.error || 'Could not book ride.';
+        const msg = err.response?.data?.message || 'Could not book ride.';
         Alert.alert('Booking Failed', msg);
         setAppState('ESTIMATING');
       }

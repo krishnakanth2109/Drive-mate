@@ -39,6 +39,9 @@
         "projectId": "d20e33f7-26e7-42f6-aec7-5ef824b8c272"
       }
     },
-    "owner": "krishnakanth21"
+    "owner": "krishnakanth21",
+    "plugins": [
+      "expo-status-bar"
+    ]
   }
 }

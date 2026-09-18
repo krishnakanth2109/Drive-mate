@@ -38,7 +38,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       navigation.replace('MainTabs');
     } catch (err: any) {
       console.log(err);
-      Alert.alert('Error', err.response?.data?.error || 'Login failed. Check credentials.');
+      Alert.alert('Error', err.response?.data?.message || 'Login failed. Check credentials.');
     } finally {
       setLoading(false);
     }

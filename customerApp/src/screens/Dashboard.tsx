@@ -14,13 +14,9 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
-import MapView, {
-  Marker,
-  Polyline,
-  UrlTile,
-  PROVIDER_GOOGLE,
-} from 'react-native-maps';
+import WebMapView from '../components/WebMapView';
 import { CustomerProvider, useCustomer } from '../context/CustomerContext';
+
 
 const { width, height } = Dimensions.get('window');
 
@@ -68,26 +64,10 @@ const VEHICLE_TYPES = [
 ];
 
 // ─────────────────────────────────────────────
-// MAP COMPONENT
+// MAP COMPONENT — WebView/Leaflet (works in Expo Go + production)
 // ─────────────────────────────────────────────
 const MapComponent = ({ isPinPicking, onPinChange }: { isPinPicking: boolean, onPinChange: (loc: {lat: number, lng: number}) => void }) => {
-  const { userLocation, estimate, driverLocation, appState, availableDrivers } = useCustomer();
-  const mapRef = useRef<MapView>(null);
-
-  useEffect(() => {
-    if (estimate && mapRef.current) {
-      mapRef.current.fitToCoordinates(
-        [
-          { latitude: estimate.pickup.lat, longitude: estimate.pickup.lng },
-          { latitude: estimate.drop.lat, longitude: estimate.drop.lng },
-        ],
-        { edgePadding: { top: 120, right: 50, bottom: 380, left: 50 }, animated: true }
-      );
-    }
-  }, [estimate]);
-
-  const routeCoordinates =
-    estimate?.polyline ? decodePolyline(estimate.polyline) : [];
+  const { userLocation, estimate, driverLocation, appState, availableDrivers, googleMapsKey } = useCustomer();
 
   if (!userLocation) {
     return (
@@ -98,83 +78,33 @@ const MapComponent = ({ isPinPicking, onPinChange }: { isPinPicking: boolean, on
     );
   }
 
+  const routeCoordinates = estimate?.polyline ? decodePolyline(estimate.polyline) : [];
+
+  const markers = estimate ? [
+    { coord: { latitude: estimate.pickup.lat, longitude: estimate.pickup.lng }, color: '#06d6a0', label: 'FROM' },
+    { coord: { latitude: estimate.drop.lat,   longitude: estimate.drop.lng   }, color: '#f72585', label: 'TO'   },
+  ] : [];
+
+  const visibleDrivers = (appState === 'IDLE' || appState === 'ESTIMATING') ? availableDrivers : {};
+
   return (
     <View style={styles.map}>
-      <MapView
-        ref={mapRef}
+      <WebMapView
+        center={userLocation}
+        googleMapsKey={googleMapsKey}
+        zoom={15}
+        markers={markers}
+        routeCoords={routeCoordinates}
+        driverLocation={(appState === 'ACCEPTED' || appState === 'ONGOING') ? driverLocation : null}
+        nearbyDrivers={visibleDrivers}
+        isPinPicking={isPinPicking}
+        onRegionChange={(lat, lng) => onPinChange({ lat, lng })}
         style={StyleSheet.absoluteFillObject}
-        provider={PROVIDER_GOOGLE}
-        initialRegion={userLocation}
-        showsUserLocation={true}
-        onRegionChangeComplete={(region) => {
-          if (isPinPicking) {
-            onPinChange({ lat: region.latitude, lng: region.longitude });
-          }
-        }}
-      >
-      {routeCoordinates.length > 0 && (
-        <Polyline
-          coordinates={routeCoordinates}
-          strokeWidth={5}
-          strokeColor="#f72585"
-        />
-      )}
-
-      {estimate && (
-        <>
-          <Marker
-            coordinate={{ latitude: estimate.pickup.lat, longitude: estimate.pickup.lng }}
-            title="Pickup"
-          >
-            <View style={styles.markerGreen}>
-              <Text style={{ fontSize: 10, color: '#fff', fontWeight: 'bold' }}>FROM</Text>
-            </View>
-          </Marker>
-          <Marker
-            coordinate={{ latitude: estimate.drop.lat, longitude: estimate.drop.lng }}
-            title="Drop"
-          >
-            <View style={styles.markerRed}>
-              <Text style={{ fontSize: 10, color: '#fff', fontWeight: 'bold' }}>TO</Text>
-            </View>
-          </Marker>
-        </>
-      )}
-
-      {/* Dynamic Nearby Drivers (Pre-booking) */}
-      {(appState === 'IDLE' || appState === 'ESTIMATING') && Object.entries(availableDrivers || {}).map(([id, driver]) => {
-        const vcfg = VEHICLE_TYPES.find(v => v.type === driver.vehicleType);
-        return (
-          <Marker 
-            key={id} 
-            coordinate={{ latitude: driver.lat, longitude: driver.lng }} 
-            anchor={{ x: 0.5, y: 0.5 }}
-            rotation={driver.heading || 0}
-          >
-            <View style={[styles.driverMarker, { backgroundColor: '#f8f8f8', padding: 4, transform: [{ scale: 0.85 }] }]}>
-              <Text style={{ fontSize: 22 }}>{vcfg?.emoji || '🏍️'}</Text>
-            </View>
-          </Marker>
-        );
-      })}
-
-      {(appState === 'ACCEPTED' || appState === 'ONGOING') && driverLocation && (
-        <Marker coordinate={driverLocation} anchor={{ x: 0.5, y: 0.5 }}>
-          <View style={styles.driverMarker}>
-            <Text style={{ fontSize: 26 }}>🏍️</Text>
-          </View>
-        </Marker>
-      )}
-      </MapView>
-
-      {isPinPicking && (
-        <View style={styles.centerPinWrap} pointerEvents="none">
-          <Text style={styles.centerPinIcon}>📍</Text>
-        </View>
-      )}
+      />
     </View>
   );
 };
+
 
 // ─────────────────────────────────────────────
 // INPUT PANEL (IDLE state)
@@ -577,6 +507,23 @@ const DashboardContent = ({ navigation }: any) => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f0f0f0' },
   map: { flex: 1 },
+  mapFallback: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#e8eaf0',
+    padding: 24,
+  },
+  mapFallbackIcon: { fontSize: 52, marginBottom: 12 },
+  mapFallbackTitle: { fontSize: 18, fontWeight: '800', color: '#1a1a2e', marginBottom: 8 },
+  mapFallbackSub: { fontSize: 13, color: '#666', textAlign: 'center', lineHeight: 20 },
+  mapFallbackCoords: {
+    marginTop: 16,
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  mapFallbackCoordsText: { fontSize: 12, color: '#555', fontWeight: '600' },
   centerPinWrap: {
     position: 'absolute',
     top: '50%',

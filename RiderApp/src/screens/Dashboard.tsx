@@ -1,7 +1,8 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Switch, TouchableOpacity, Platform, Modal, TextInput, Alert, ActivityIndicator } from 'react-native';
-import MapView, { Marker, Polyline, UrlTile, PROVIDER_GOOGLE } from 'react-native-maps';
+import RiderWebMapView from '../components/RiderWebMapView';
 import { RiderProvider, useRider } from '../context/RiderContext';
+
 
 // --- HELPER: Decode Polyline ---
 const decodePolyline = (t: string) => {
@@ -34,61 +35,28 @@ const decodePolyline = (t: string) => {
 
 // --- COMPONENT: MAP AREA ---
 const MapArea = () => {
-  const { location, incomingRequest, activeRide } = useRider();
-  const mapRef = useRef<MapView>(null);
+  const { location, googleMapsKey, incomingRequest, activeRide } = useRider();
 
-  // Focus Logic
-  useEffect(() => {
-    if (incomingRequest && mapRef.current) {
-        // Zoom to fit Pickup & Drop
-        mapRef.current.fitToCoordinates([
-            { latitude: incomingRequest.pickup.lat, longitude: incomingRequest.pickup.lng },
-            { latitude: incomingRequest.drop.lat, longitude: incomingRequest.drop.lng }
-        ], { edgePadding: { top: 50, right: 50, bottom: 300, left: 50 }, animated: true });
-    } else if (activeRide && mapRef.current) {
-        // Keep focus on route
-         mapRef.current.fitToCoordinates([
-            { latitude: activeRide.pickup.lat, longitude: activeRide.pickup.lng },
-            { latitude: activeRide.drop.lat, longitude: activeRide.drop.lng }
-        ], { edgePadding: { top: 50, right: 50, bottom: 300, left: 50 }, animated: true });
-    }
-  }, [incomingRequest, activeRide]);
+  if (!location) return <View style={styles.loadingMap}><ActivityIndicator size="large" color="black" /></View>;
 
   const activeData = incomingRequest || activeRide;
   const routeCoords = activeData ? decodePolyline(activeData.polyline) : [];
 
-  if (!location) return <View style={styles.loadingMap}><ActivityIndicator size="large" color="black" /></View>;
-
   return (
-    <MapView
-      ref={mapRef}
-      style={styles.map}
-      provider={PROVIDER_GOOGLE}
-      initialRegion={location}
-      showsUserLocation={true}
-    >
-
-      {/* Route Line */}
-      {routeCoords.length > 0 && <Polyline coordinates={routeCoords} strokeWidth={5} strokeColor="#f72585" />}
-
-      {/* Markers */}
-      {activeData && (
-        <>
-          <Marker coordinate={{ latitude: activeData.pickup.lat, longitude: activeData.pickup.lng }} title="Pickup">
-            <View style={styles.markerGreen}>
-              <Text style={{ fontSize: 10, color: '#fff', fontWeight: 'bold' }}>FROM</Text>
-            </View>
-          </Marker>
-          <Marker coordinate={{ latitude: activeData.drop.lat, longitude: activeData.drop.lng }} title="Drop">
-            <View style={styles.markerRed}>
-              <Text style={{ fontSize: 10, color: '#fff', fontWeight: 'bold' }}>TO</Text>
-            </View>
-          </Marker>
-        </>
-      )}
-    </MapView>
+    <View style={styles.map}>
+      <RiderWebMapView
+        center={{ latitude: (location as any).latitude, longitude: (location as any).longitude }}
+        googleMapsKey={googleMapsKey}
+        zoom={15}
+        pickupCoord={activeData ? { lat: activeData.pickup.lat, lng: activeData.pickup.lng } : null}
+        dropCoord={activeData ? { lat: activeData.drop.lat, lng: activeData.drop.lng } : null}
+        routeCoords={routeCoords}
+        style={StyleSheet.absoluteFillObject}
+      />
+    </View>
   );
 };
+
 
 // --- COMPONENT: HEADER ---
 const HeaderToggle = ({navigation}: any) => {
@@ -246,6 +214,12 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   loadingMap: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#eee' },
   map: { flex: 1 },
+  mapFallback: { padding: 24 },
+  mapFallbackIcon: { fontSize: 52, marginBottom: 12 },
+  mapFallbackTitle: { fontSize: 18, fontWeight: '800', color: '#1a1a2e', marginBottom: 8 },
+  mapFallbackSub: { fontSize: 13, color: '#666', textAlign: 'center', lineHeight: 20 },
+  mapFallbackCoords: { marginTop: 16, backgroundColor: '#fff', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
+  mapFallbackCoordsText: { fontSize: 12, color: '#555', fontWeight: '600' },
   overlay: { position: 'absolute', top: 50, left: 20, right: 20 },
   
   // Map markers

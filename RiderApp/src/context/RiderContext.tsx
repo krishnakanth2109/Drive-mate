@@ -8,6 +8,7 @@ import { Ride } from '../services/types';
 interface RiderContextType {
   isOnline: boolean;
   location: any;
+  googleMapsKey: string | null;
   incomingRequest: Ride | null;
   activeRide: Ride | null;
   toggleOnline: () => void;
@@ -23,6 +24,7 @@ const RiderContext = createContext<RiderContextType>({} as RiderContextType);
 export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
   const [isOnline, setIsOnline] = useState(false);
   const [location, setLocation] = useState<any>(null);
+  const [googleMapsKey, setGoogleMapsKey] = useState<string | null>(null);
   const [incomingRequest, setIncomingRequest] = useState<Ride | null>(null);
   const [activeRide, setActiveRide] = useState<Ride | null>(null);
   
@@ -38,13 +40,27 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
         Alert.alert('Permission denied', 'Enable location to receive rides');
         return;
       }
-      const loc = await Location.getCurrentPositionAsync({});
-      setLocation({
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
-      });
+      try {
+        const loc = await Location.getCurrentPositionAsync({});
+        setLocation({
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        });
+      } catch (e) {
+        console.log("Location fetch error on init", e);
+      }
+    })();
+
+    // Fetch Google Maps API key from backend
+    (async () => {
+      try {
+        const res = await api.get('/config/maps-key');
+        setGoogleMapsKey(res.data.key || res.data);
+      } catch (e) {
+        console.log('Failed to fetch maps key', e);
+      }
     })();
   }, []);
 
@@ -103,29 +119,33 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
     if(locationInterval.current) clearInterval(locationInterval.current);
     
     locationInterval.current = setInterval(async () => {
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        const { latitude, longitude, heading } = loc.coords;
-        
-        setLocation((prev: any) => ({
-            ...prev,
-            latitude,
-            longitude
-        }));
-
-        // Send to Backend
         try {
-            await api.put('/users/location', { lat: latitude, lng: longitude, heading });
+            const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+            const { latitude, longitude, heading } = loc.coords;
             
-            // If active ride, send to customer via socket
-            if(activeRide) {
-                socket.emit('driver_location_update', {
-                    rideId: activeRide._id,
-                    lat: latitude,
-                    lng: longitude,
-                    heading
-                });
-            }
-        } catch(e) { console.log("Loc Update Error"); }
+            setLocation((prev: any) => ({
+                ...prev,
+                latitude,
+                longitude
+            }));
+
+            // Send to Backend
+            try {
+                await api.put('/users/location', { lat: latitude, lng: longitude, heading });
+                
+                // If active ride, send to customer via socket
+                if(activeRide) {
+                    socket.emit('driver_location_update', {
+                        rideId: activeRide._id,
+                        lat: latitude,
+                        lng: longitude,
+                        heading
+                    });
+                }
+            } catch(e) { console.log("Loc Update Error"); }
+        } catch (e) {
+            console.log("Interval location fetch error", e);
+        }
 
     }, 10000); // 10 Seconds
   };
@@ -206,7 +226,7 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <RiderContext.Provider value={{
-      isOnline, location, incomingRequest, activeRide,
+      isOnline, location, googleMapsKey, incomingRequest, activeRide,
       toggleOnline, acceptRide, rejectRide, startRide, completeRide, logout
     }}>
       {children}

@@ -23,7 +23,7 @@ export default function RegisterScreen({ navigation }: any) {
       Alert.alert('Success', 'Account created! Please login.');
       navigation.navigate('Login');
     } catch (err: any) {
-      Alert.alert('Error', err.response?.data?.error || 'Registration failed');
+      Alert.alert('Error', err.response?.data?.message || 'Registration failed');
     } finally {
       setLoading(false);
     }
