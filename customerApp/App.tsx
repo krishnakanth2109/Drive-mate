@@ -3,20 +3,20 @@ import React from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
-import LoginScreen from './src/screens/LoginScreen';
-import RegisterScreen from './src/screens/RegisterScreen';
+import LoginScreen from './src/screens/Authentication/Login';
+import RegisterScreen from './src/screens/Authentication/Register';
 import MainTabNavigator from './src/navigation/MainTabNavigator';
 
 // Profile sub-pages
-import PaymentScreen from './src/screens/PaymentScreen';
-import ReferAndEarnScreen from './src/screens/ReferAndEarnScreen';
-import MyRewardsScreen from './src/screens/MyRewardsScreen';
-import PowerPassScreen from './src/screens/PowerPassScreen';
-import CoinsScreen from './src/screens/CoinsScreen';
-import NotificationsScreen from './src/screens/NotificationsScreen';
-import ClaimsScreen from './src/screens/ClaimsScreen';
-import SettingsScreen from './src/screens/SettingsScreen';
-import HelpScreen from './src/screens/HelpScreen';
+import PaymentScreen from './src/screens/Payments/Payment';
+import ReferAndEarnScreen from './src/screens/Account/ReferAndEarn';
+import MyRewardsScreen from './src/screens/Home/Offers';
+import PowerPassScreen from './src/screens/Account/PowerPass';
+import CoinsScreen from './src/screens/Payments/Coins';
+import NotificationsScreen from './src/screens/Notifications/Notifications';
+import ClaimsScreen from './src/screens/Support/RaiseTicket';
+import SettingsScreen from './src/screens/Account/Settings';
+import HelpScreen from './src/screens/Support/HelpCenter';
 
 const Stack = createStackNavigator();
 

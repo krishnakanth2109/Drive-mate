@@ -3,11 +3,11 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { Platform } from 'react-native';
 
-import RiderDashboard from '../screens/Dashboard';
-import RidesScreen from '../screens/RidesScreen';
-import TravelScreen from '../screens/TravelScreen';
-import OffersScreen from '../screens/OffersScreen';
-import ProfileScreen from '../screens/ProfileScreen';
+import RiderDashboard from '../screens/MainDashboard/Dashboard';
+import RidesScreen from '../screens/Orders/AvailableOrders';
+import TravelScreen from '../screens/Navigation/RouteDetails';
+import OffersScreen from '../screens/MainDashboard/Offers';
+import ProfileScreen from '../screens/Account/Profile';
 
 import { RiderProvider } from '../context/RiderContext';
 

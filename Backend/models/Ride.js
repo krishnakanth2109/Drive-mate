@@ -26,7 +26,7 @@ const RideSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ['pending', 'accepted', 'ongoing', 'completed', 'cancelled'],
+      enum: ['pending', 'accepted', 'arrived', 'ongoing', 'completed', 'cancelled'],
       default: 'pending',
     },
 
@@ -42,6 +42,8 @@ const RideSchema = new mongoose.Schema(
     duration: { type: Number }, // mins
     polyline: { type: String },
     otp: { type: String },
+    arrivedAt: { type: Date },
+    waitCharges: { type: Number, default: 0 },
   },
   { timestamps: true }
 );

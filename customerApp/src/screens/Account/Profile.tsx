@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import { useCustomer } from '../context/CustomerContext';
+import { useCustomer } from '../../context/CustomerContext';
 
 export default function MyAccountScreen({ navigation }: any) {
   const { logout } = useCustomer();

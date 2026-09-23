@@ -1,10 +1,10 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Text } from 'react-native';
-import CustomerDashboard from '../screens/Dashboard';
-import MyRidesScreen from '../screens/MyRidesScreen';
-import TravelScreen from '../screens/TravelScreen';
-import MyAccountScreen from '../screens/MyAccountScreen';
+import CustomerDashboard from '../screens/Home/Home';
+import MyRidesScreen from '../screens/Orders/ActiveOrders';
+import TravelScreen from '../screens/Search/SearchResults';
+import MyAccountScreen from '../screens/Account/Profile';
 import { CustomerProvider } from '../context/CustomerContext';
 
 const Tab = createBottomTabNavigator();

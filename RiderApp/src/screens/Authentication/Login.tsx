@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { api, connectSocket, socket } from '../services/api';
+import { api, connectSocket, socket } from '../../services/api';
 
 type LoginScreenProps = {
   navigation: StackNavigationProp<any, 'Login'>;

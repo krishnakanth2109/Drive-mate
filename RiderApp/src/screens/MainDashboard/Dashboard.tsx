@@ -1,7 +1,9 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Switch, TouchableOpacity, Platform, Modal, TextInput, Alert, ActivityIndicator } from 'react-native';
-import RiderWebMapView from '../components/RiderWebMapView';
-import { RiderProvider, useRider } from '../context/RiderContext';
+import { MaterialIcons } from '@expo/vector-icons';
+import RiderWebMapView from '../../components/RiderWebMapView';
+import SwipeButton from '../../components/SwipeButton';
+import { RiderProvider, useRider } from '../../context/RiderContext';
 
 
 // --- HELPER: Decode Polyline ---
@@ -83,9 +85,30 @@ const HeaderToggle = ({navigation}: any) => {
 
 // --- COMPONENT: BOTTOM PANEL ---
 const BottomPanel = () => {
-  const { isOnline, incomingRequest, activeRide, acceptRide, rejectRide, startRide, completeRide } = useRider();
+  const { isOnline, incomingRequest, activeRide, acceptRide, rejectRide, arriveAtPickup, startRide, completeRide } = useRider();
   const [otp, setOtp] = useState('');
   const [otpModalVisible, setOtpModalVisible] = useState(false);
+  const [waitTime, setWaitTime] = useState(0);
+
+  // Timer logic for wait time
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (activeRide?.status === 'arrived' && activeRide.arrivedAt) {
+      interval = setInterval(() => {
+        setWaitTime(Date.now() - new Date(activeRide.arrivedAt!).getTime());
+      }, 1000);
+    } else {
+      setWaitTime(0);
+    }
+    return () => clearInterval(interval);
+  }, [activeRide?.status, activeRide?.arrivedAt]);
+
+  const formatTime = (ms: number) => {
+    const totalSecs = Math.floor(ms / 1000);
+    const m = Math.floor(totalSecs / 60).toString().padStart(2, '0');
+    const s = (totalSecs % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
 
   if (!isOnline) return null;
 
@@ -95,7 +118,11 @@ const BottomPanel = () => {
 
     return (
       <View style={styles.panel}>
-        <Text style={styles.panelTitle}>{isStarted ? "Ride in Progress" : "Pick up Customer"}</Text>
+        <Text style={styles.panelTitle}>
+          {activeRide.status === 'accepted' ? "Head to Pickup" : 
+           activeRide.status === 'arrived' ? "Waiting for Customer" : 
+           "Ride in Progress"}
+        </Text>
         
         {/* Customer Info */}
         <View style={styles.customerBox}>
@@ -112,14 +139,30 @@ const BottomPanel = () => {
           <Text style={styles.value} numberOfLines={1}>{activeRide.drop.address}</Text>
         </View>
 
-        {!isStarted ? (
-            <TouchableOpacity style={styles.btnBlack} onPress={() => setOtpModalVisible(true)}>
-                <Text style={styles.btnText}>Start Ride</Text>
-            </TouchableOpacity>
-        ) : (
-            <TouchableOpacity style={styles.btnRed} onPress={completeRide}>
-                <Text style={styles.btnText}>Complete Ride</Text>
-            </TouchableOpacity>
+        {/* Wait Timer (Shows when arrived) */}
+        {activeRide.status === 'arrived' && (
+          <View style={{ alignItems: 'center', marginVertical: 10 }}>
+            <Text style={{ color: 'gray', fontSize: 14 }}>Wait Time</Text>
+            <Text style={{ fontSize: 24, fontWeight: 'bold', color: waitTime > 180000 ? 'red' : 'black' }}>
+              {formatTime(waitTime)}
+            </Text>
+            {waitTime > 180000 && <Text style={{ color: 'red', fontSize: 12 }}>Charges applying (₹2/min)</Text>}
+          </View>
+        )}
+
+        {/* Action Buttons */}
+        {activeRide.status === 'accepted' && (
+          <SwipeButton title="Swipe to Arrive" onSwipeSuccess={arriveAtPickup} buttonColor="#3498db" />
+        )}
+
+        {activeRide.status === 'arrived' && (
+          <TouchableOpacity style={styles.btnBlack} onPress={() => setOtpModalVisible(true)}>
+            <Text style={styles.btnText}>Start Ride (Enter OTP)</Text>
+          </TouchableOpacity>
+        )}
+
+        {activeRide.status === 'ongoing' && (
+          <SwipeButton title="Swipe to Complete" onSwipeSuccess={completeRide} buttonColor="#f72585" />
         )}
 
         {/* OTP MODAL */}

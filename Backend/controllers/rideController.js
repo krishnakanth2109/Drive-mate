@@ -176,8 +176,25 @@ export const updateRideStatus = asyncHandler(async (req, res) => {
   const ride = await Ride.findById(rideId);
   if (!ride) throw new ApiError(404, 'Ride not found');
 
-  if (status === 'ongoing' && ride.otp !== otp) {
-    throw new ApiError(400, 'Invalid OTP');
+  if (status === 'ongoing') {
+    if (ride.otp !== otp) {
+      throw new ApiError(400, 'Invalid OTP');
+    }
+    // Calculate wait time charges
+    if (ride.arrivedAt) {
+      const waitTimeMs = new Date() - new Date(ride.arrivedAt);
+      const waitTimeMins = Math.floor(waitTimeMs / 60000);
+      if (waitTimeMins > 3) {
+        // Rs 2 per minute after 3 minutes
+        const extraMins = waitTimeMins - 3;
+        ride.waitCharges = extraMins * 2;
+        ride.fare += ride.waitCharges;
+      }
+    }
+  }
+
+  if (status === 'arrived') {
+    ride.arrivedAt = new Date();
   }
 
   ride.status = status;
@@ -189,7 +206,7 @@ export const updateRideStatus = asyncHandler(async (req, res) => {
     await Rider.findByIdAndUpdate(ride.rider, { isAvailable: true });
   }
 
-  res.status(200).json(new ApiResponse(200, null, `Ride status updated to ${status}`));
+  res.status(200).json(new ApiResponse(200, { ride }, `Ride status updated to ${status}`));
 });
 
 export const cancelRide = asyncHandler(async (req, res) => {

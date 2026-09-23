@@ -14,6 +14,7 @@ interface RiderContextType {
   toggleOnline: () => void;
   acceptRide: () => void;
   rejectRide: () => void;
+  arriveAtPickup: () => Promise<boolean>;
   startRide: (otp: string) => Promise<boolean>;
   completeRide: () => void;
   logout: (nav: any) => void;
@@ -181,15 +182,30 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
+  const arriveAtPickup = async () => {
+    if(!activeRide) return false;
+    try {
+        const res = await api.put('/ride/update-status', {
+            rideId: activeRide._id,
+            status: 'arrived'
+        });
+        setActiveRide(res.data.ride || { ...activeRide, status: 'arrived', arrivedAt: new Date().toISOString() });
+        return true;
+    } catch (err) {
+        Alert.alert("Error", "Could not update status");
+        return false;
+    }
+  };
+
   const startRide = async (otp: string) => {
     if(!activeRide) return false;
     try {
-        await api.put('/ride/update-status', {
+        const res = await api.put('/ride/update-status', {
             rideId: activeRide._id,
             status: 'ongoing',
             otp
         });
-        setActiveRide({ ...activeRide, status: 'ongoing' });
+        setActiveRide(res.data.ride || { ...activeRide, status: 'ongoing' });
         return true;
     } catch (err: any) {
         Alert.alert("Invalid OTP", "Ask customer for the 4-digit code");
@@ -227,7 +243,7 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
   return (
     <RiderContext.Provider value={{
       isOnline, location, googleMapsKey, incomingRequest, activeRide,
-      toggleOnline, acceptRide, rejectRide, startRide, completeRide, logout
+      toggleOnline, acceptRide, rejectRide, arriveAtPickup, startRide, completeRide, logout
     }}>
       {children}
     </RiderContext.Provider>

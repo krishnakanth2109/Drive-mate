@@ -20,7 +20,9 @@ export interface Ride {
   fare: number;
   distance: number;
   duration: number;
-  status: 'pending' | 'accepted' | 'ongoing' | 'completed' | 'cancelled';
+  status: 'pending' | 'accepted' | 'arrived' | 'ongoing' | 'completed' | 'cancelled';
   otp: string;
   polyline: string;
+  arrivedAt?: string;
+  waitCharges?: number;
 }

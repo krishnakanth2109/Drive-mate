@@ -14,8 +14,8 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
-import WebMapView from '../components/WebMapView';
-import { CustomerProvider, useCustomer } from '../context/CustomerContext';
+import WebMapView from '../../components/WebMapView';
+import { CustomerProvider, useCustomer } from '../../context/CustomerContext';
 
 
 const { width, height } = Dimensions.get('window');

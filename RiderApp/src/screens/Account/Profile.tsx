@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRider } from '../context/RiderContext';
+import { useRider } from '../../context/RiderContext';
 
 export default function ProfileScreen({ navigation }: any) {
   const { logout } = useRider();

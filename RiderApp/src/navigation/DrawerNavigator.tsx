@@ -4,12 +4,12 @@ import { View, Text, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import MainTabNavigator from './MainTabNavigator';
-import EarningsScreen from '../screens/EarningsScreen';
-import HistoryScreen from '../screens/menu/HistoryScreen';
-import DocumentsScreen from '../screens/DocumentsScreen';
-import VehicleScreen from '../screens/VehicleScreen';
-import SettingsScreen from '../screens/SettingsScreen';
-import SupportScreen from '../screens/SupportScreen';
+import EarningsScreen from '../screens/Earnings/Earnings';
+import HistoryScreen from '../screens/Orders/OrderHistory';
+import DocumentsScreen from '../screens/Account/Documents';
+import VehicleScreen from '../screens/Account/Vehicle';
+import SettingsScreen from '../screens/Account/Settings';
+import SupportScreen from '../screens/Support/HelpCenter';
 import { useRider } from '../context/RiderContext';
 
 const Drawer = createDrawerNavigator();

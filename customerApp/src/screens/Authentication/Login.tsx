@@ -11,7 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { api, connectSocket, socket } from '../services/api';
+import { api, connectSocket, socket } from '../../services/api';
 
 export default function LoginScreen({ navigation }: any) {
   const [isLogin, setIsLogin] = useState(true);

@@ -5,22 +5,22 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 
 // Screens
-import LoginScreen from './src/screens/LoginScreen';
-import RegisterScreen from './src/screens/RegisterScreen';
+import LoginScreen from './src/screens/Authentication/Login';
+import RegisterScreen from './src/screens/Authentication/Register';
 import DrawerNavigator from './src/navigation/DrawerNavigator';
-import HistoryScreen from './src/screens/menu/HistoryScreen';
-import OffersScreen from './src/screens/menu/OffersScreen';
-import OfficeScreen from './src/screens/menu/OfficeScreen';
-import TermsScreen from './src/screens/menu/TermsScreen';
-import IncentivesScreen from './src/screens/menu/IncentivesScreen';
+import HistoryScreen from './src/screens/Orders/OrderHistory';
+import OffersScreen from './src/screens/MainDashboard/Offers';
+import OfficeScreen from './src/screens/MainDashboard/Office';
+import TermsScreen from './src/screens/Support/Terms';
+import IncentivesScreen from './src/screens/Earnings/Incentives';
 
 // Driver Profile Screens
-import EarningsScreen from './src/screens/EarningsScreen';
-import DocumentsScreen from './src/screens/DocumentsScreen';
-import VehicleScreen from './src/screens/VehicleScreen';
-import SupportScreen from './src/screens/SupportScreen';
-import SettingsScreen from './src/screens/SettingsScreen';
-import OutstationOptInScreen from './src/screens/OutstationOptInScreen';
+import EarningsScreen from './src/screens/Earnings/Earnings';
+import DocumentsScreen from './src/screens/Account/Documents';
+import VehicleScreen from './src/screens/Account/Vehicle';
+import SupportScreen from './src/screens/Support/HelpCenter';
+import SettingsScreen from './src/screens/Account/Settings';
+import OutstationOptInScreen from './src/screens/MainDashboard/OutstationOptIn';
 
 const Stack = createStackNavigator();
 

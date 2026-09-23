@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
-import { api } from '../services/api';
+import { api } from '../../services/api';
 
 export default function RegisterScreen({ navigation }: any) {
   const [name, setName] = useState('');
