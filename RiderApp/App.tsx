@@ -5,10 +5,24 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 
 // Screens
+import SplashScreen from './src/screens/Splash/SplashScreen';
+import OnboardingScreen from './src/screens/Onboarding/OnboardingScreen';
 import LoginScreen from './src/screens/Authentication/Login';
 import RegisterScreen from './src/screens/Authentication/Register';
+import OTPVerificationScreen from './src/screens/Authentication/OTPVerification';
+import ForgotPasswordScreen from './src/screens/Authentication/ForgotPassword';
+import ResetPasswordScreen from './src/screens/Authentication/ResetPassword';
 import DrawerNavigator from './src/navigation/DrawerNavigator';
+import QuickActionsScreen from './src/screens/MainDashboard/QuickActions';
 import HistoryScreen from './src/screens/Orders/OrderHistory';
+
+// Phase 4 - Orders & Tracking
+import ActiveOrderScreen from './src/screens/Orders/ActiveOrder';
+import OrderDetailsScreen from './src/screens/Orders/OrderDetails';
+import PickupNavigationScreen from './src/screens/Navigation/PickupNavigation';
+import DropNavigationScreen from './src/screens/Navigation/DropNavigation';
+import RouteDetailsScreen from './src/screens/Navigation/RouteDetails';
+
 import OffersScreen from './src/screens/MainDashboard/Offers';
 import OfficeScreen from './src/screens/MainDashboard/Office';
 import TermsScreen from './src/screens/Support/Terms';
@@ -28,13 +42,26 @@ export default function App() {
   return (
     <NavigationContainer>
       <StatusBar style="dark" />
-      <Stack.Navigator initialRouteName="Login">
+      <Stack.Navigator initialRouteName="Splash">
         {/* Auth Screens */}
+        <Stack.Screen name="Splash" component={SplashScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Register" component={RegisterScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="OTPVerification" component={OTPVerificationScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} options={{ headerShown: false }} />
 
         {/* Main App with Drawer and Tabs */}
         <Stack.Screen name="MainTabs" component={DrawerNavigator} options={{ headerShown: false }} />
+        <Stack.Screen name="QuickActions" component={QuickActionsScreen} options={{ headerShown: false }} />
+
+        {/* Orders & Tracking Flows */}
+        <Stack.Screen name="ActiveOrder" component={ActiveOrderScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="OrderDetails" component={OrderDetailsScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="PickupNavigation" component={PickupNavigationScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="DropNavigation" component={DropNavigationScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="RouteDetails" component={RouteDetailsScreen} options={{ headerShown: false }} />
 
         {/* Profile Sub-Pages */}
         <Stack.Screen name="Earnings" component={EarningsScreen} options={{ title: 'My Earnings' }} />

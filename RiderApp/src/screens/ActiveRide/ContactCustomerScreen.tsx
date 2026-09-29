@@ -1,0 +1,119 @@
+import React from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Linking, SafeAreaView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+
+export default function ContactCustomerScreen({ navigation, route }: any) {
+  // Mock customer data, in real app get from route.params or context
+  const customerName = route?.params?.customerName || 'John Doe';
+  const customerPhone = route?.params?.customerPhone || '+1234567890';
+
+  const handleCall = () => {
+    Linking.openURL(`tel:${customerPhone}`);
+  };
+
+  const handleMessage = () => {
+    Linking.openURL(`sms:${customerPhone}`);
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Ionicons name="arrow-back" size={24} color="#333" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Contact Customer</Text>
+        <View style={{ width: 24 }} />
+      </View>
+
+      <View style={styles.content}>
+        <View style={styles.avatarContainer}>
+          <Ionicons name="person-circle-outline" size={100} color="#ccc" />
+          <Text style={styles.name}>{customerName}</Text>
+          <Text style={styles.status}>Waiting at pickup location</Text>
+        </View>
+
+        <View style={styles.actionContainer}>
+          <TouchableOpacity style={[styles.actionBtn, styles.callBtn]} onPress={handleCall}>
+            <Ionicons name="call" size={24} color="#fff" />
+            <Text style={styles.btnText}>Call</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.actionBtn, styles.msgBtn]} onPress={handleMessage}>
+            <Ionicons name="chatbubble" size={24} color="#fff" />
+            <Text style={styles.btnText}>Message</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  backBtn: {
+    padding: 8,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  content: {
+    flex: 1,
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarContainer: {
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  name: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+    marginTop: 16,
+  },
+  status: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 8,
+  },
+  actionContainer: {
+    flexDirection: 'row',
+    gap: 20,
+    width: '100%',
+    paddingHorizontal: 20,
+  },
+  actionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  callBtn: {
+    backgroundColor: '#4CAF50',
+  },
+  msgBtn: {
+    backgroundColor: '#2196F3',
+  },
+  btnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  }
+});
