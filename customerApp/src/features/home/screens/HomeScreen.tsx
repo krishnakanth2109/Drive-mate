@@ -13,9 +13,10 @@ import {
   Animated,
   KeyboardAvoidingView,
 } from 'react-native';
+import { DrawerActions } from '@react-navigation/native';
 import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 import WebMapView from '../../../components/WebMapView';
-import { CustomerProvider, useCustomer } from '../../../context/CustomerContext';
+import { useCustomer } from '../../../context/CustomerContext';
 
 
 const { width, height } = Dimensions.get('window');
@@ -99,7 +100,7 @@ const MapComponent = ({ isPinPicking, onPinChange }: { isPinPicking: boolean, on
         nearbyDrivers={visibleDrivers}
         isPinPicking={isPinPicking}
         onRegionChange={(lat, lng) => onPinChange({ lat, lng })}
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
       />
     </View>
   );
@@ -237,7 +238,13 @@ const InputPanel = ({ isPinPicking, setIsPinPicking, pinLocation }: any) => {
                 }}
               />
             ) : (
-              <ActivityIndicator size="small" color="#f72585" style={{ marginTop: 12 }} />
+              <TextInput
+                style={[styles.input, { height: 48, marginBottom: 0 }]}
+                placeholder="Where to? (city, landmark...)"
+                placeholderTextColor="#999"
+                value={dropText}
+                onChangeText={(t) => { setDropText(t); setDropCoords(null); }}
+              />
             )}
           </View>
           <TouchableOpacity style={styles.mapPickBtn} onPress={() => setIsPinPicking(true)}>
@@ -484,7 +491,17 @@ const DashboardContent = ({ navigation }: any) => {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <TouchableOpacity 
             style={styles.menuBtn} 
-            onPress={() => navigation.toggleDrawer && navigation.toggleDrawer()}
+            onPress={() => {
+              try {
+                if (navigation.dispatch) {
+                  navigation.dispatch(DrawerActions.toggleDrawer());
+                } else if (navigation.getParent?.()?.toggleDrawer) {
+                  navigation.getParent().toggleDrawer();
+                } else if (navigation.toggleDrawer) {
+                  navigation.toggleDrawer();
+                }
+              } catch (_) {}
+            }}
           >
             <Text style={{ fontSize: 24, color: '#1a1a2e' }}>☰</Text>
           </TouchableOpacity>

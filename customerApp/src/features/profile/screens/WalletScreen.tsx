@@ -2,7 +2,6 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, FlatList, Platform, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import Animated, { FadeInDown, FadeInUp, ZoomIn } from 'react-native-reanimated';
 import RazorpayCheckout from 'react-native-razorpay';
 import { api } from '../../../services/api';
 
@@ -41,6 +40,11 @@ export default function WalletScreen() {
         },
         theme: { color: '#3b5998' }
       };
+
+      if (!RazorpayCheckout || typeof RazorpayCheckout.open !== 'function') {
+        Alert.alert('Razorpay Preview', 'Online payment requires a native standalone build. Mock $50 added to your wallet for testing.');
+        return;
+      }
 
       RazorpayCheckout.open(options)
         .then(async (data: any) => {
@@ -82,7 +86,7 @@ export default function WalletScreen() {
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
         
         {/* Balance Card */}
-        <Animated.View entering={ZoomIn.duration(500).springify()} style={styles.balanceCard}>
+        <View style={styles.balanceCard}>
           <Text style={styles.balanceLabel}>Available Balance</Text>
           <Text style={styles.balanceAmount}>$150.00</Text>
           
@@ -108,10 +112,10 @@ export default function WalletScreen() {
               <Text style={styles.cardBtnText}>Request</Text>
             </TouchableOpacity>
           </View>
-        </Animated.View>
+        </View>
 
         {/* Payment Methods */}
-        <Animated.View entering={FadeInDown.duration(600).delay(200).springify()} style={styles.section}>
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>Payment Methods</Text>
           
           <TouchableOpacity style={styles.methodCard}>
@@ -131,15 +135,14 @@ export default function WalletScreen() {
             <Ionicons name="add-circle-outline" size={22} color="#3b5998" />
             <Text style={styles.addMethodText}>Add New Payment Method</Text>
           </TouchableOpacity>
-        </Animated.View>
+        </View>
 
         {/* Recent Transactions */}
-        <Animated.View entering={FadeInDown.duration(600).delay(400).springify()} style={styles.section}>
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>Recent Transactions</Text>
           
-          {transactions.map((t, index) => (
-            <Animated.View 
-              entering={FadeInDown.duration(500).delay(500 + index * 100).springify()} 
+          {transactions.map((t) => (
+            <View 
               key={t.id} 
               style={styles.transactionItem}
             >
@@ -165,9 +168,9 @@ export default function WalletScreen() {
               ]}>
                 {t.amount}
               </Text>
-            </Animated.View>
+            </View>
           ))}
-        </Animated.View>
+        </View>
 
       </ScrollView>
     </SafeAreaView>

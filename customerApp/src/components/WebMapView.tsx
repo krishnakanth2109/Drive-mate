@@ -44,6 +44,8 @@ export default function WebMapView({
   isPinPicking = false,
   style,
 }: Props) {
+  const safeLat = center?.latitude ?? 17.385;
+  const safeLng = center?.longitude ?? 78.4867;
   const markersJson = JSON.stringify(markers);
   const routeJson = JSON.stringify(routeCoords);
   const driverJson = JSON.stringify(driverLocation);
@@ -67,7 +69,7 @@ ${isPinPicking ? '<div class="pin-center">📍</div>' : ''}
   let map, userMarker;
 
   function initMap() {
-    const center = { lat: ${center.latitude}, lng: ${center.longitude} };
+    const center = { lat: ${safeLat}, lng: ${safeLng} };
     map = new google.maps.Map(document.getElementById('map'), {
       center,
       zoom: ${zoom},
@@ -186,10 +188,10 @@ ${isPinPicking ? '<div class="pin-center">📍</div>' : ''}
 ${isPinPicking ? '<div class="pin-center">📍</div>' : ''}
 <script>
   const map = L.map('map', { zoomControl:true, attributionControl:false })
-    .setView([${center.latitude}, ${center.longitude}], ${zoom});
+    .setView([${safeLat}, ${safeLng}], ${zoom});
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19 }).addTo(map);
   const userIcon = L.divIcon({ html:'<div style="width:14px;height:14px;border-radius:50%;background:#4285f4;border:3px solid white;box-shadow:0 0 8px rgba(66,133,244,0.6)"></div>', iconSize:[14,14], iconAnchor:[7,7], className:'' });
-  L.marker([${center.latitude}, ${center.longitude}], { icon:userIcon }).addTo(map);
+  L.marker([${safeLat}, ${safeLng}], { icon:userIcon }).addTo(map);
   const markersData = ${markersJson};
   markersData.forEach(m => {
     const cls = m.label === 'FROM' ? 'from-label' : 'to-label';

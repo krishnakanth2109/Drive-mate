@@ -1,27 +1,29 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function SplashScreen({ navigation }: any) {
-  const fadeAnim = new Animated.Value(0);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
-      duration: 1500,
+      duration: 1200,
       useNativeDriver: true,
     }).start(async () => {
-      const token = await AsyncStorage.getItem('token');
-      setTimeout(() => {
+      try {
+        const token = await AsyncStorage.getItem('token');
         if (token) {
           navigation.replace('Main');
         } else {
           navigation.replace('Auth');
         }
-      }, 1000);
+      } catch (err) {
+        navigation.replace('Auth');
+      }
     });
-  }, []);
+  }, [navigation, fadeAnim]);
 
   return (
     <View style={styles.container}>

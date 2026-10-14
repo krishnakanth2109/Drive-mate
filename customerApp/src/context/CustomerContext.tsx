@@ -111,7 +111,7 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
   const [activeRide, setActiveRide] = useState<ActiveRide | null>(null);
   const [driverLocation, setDriverLocation] = useState<DriverLocation | null>(null);
   const [availableDrivers, setAvailableDrivers] = useState<{ [id: string]: { lat: number; lng: number; heading: number; vehicleType: string } }>({});
-  const [googleMapsKey, setGoogleMapsKey] = useState<string | null>(null);
+  const [googleMapsKey, setGoogleMapsKey] = useState<string | null>('AIzaSyDOMtmUqwZCLcEHSGQI4WpBLnvBiEPmX2E');
 
   const activeRideIdRef = useRef<string | null>(null);
 
@@ -343,7 +343,15 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
     await AsyncStorage.multiRemove(['token', 'user', 'userId']);
     socket.disconnect();
     resetFlow();
-    navigation.replace('Auth');
+    if (navigation) {
+      if (typeof navigation.replace === 'function') {
+        navigation.replace('Auth');
+      } else if (typeof navigation.reset === 'function') {
+        navigation.reset({ index: 0, routes: [{ name: 'Auth' }] });
+      } else if (typeof navigation.navigate === 'function') {
+        navigation.navigate('Auth');
+      }
+    }
   }, [resetFlow]);
 
   return (

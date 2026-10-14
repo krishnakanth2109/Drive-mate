@@ -27,7 +27,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   placeholderGrid: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     opacity: 0.1,
     borderWidth: 1,
     borderColor: '#333',
