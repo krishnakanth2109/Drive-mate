@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Platform, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useCustomer } from '../../../context/CustomerContext';
@@ -26,14 +26,12 @@ export default function MyAccountScreen({ navigation }: any) {
   const menuItems = [
     { id: '1', title: 'My Wallet', icon: 'wallet-outline', screen: 'Wallet' },
     { id: '2', title: 'My Rides', icon: 'time-outline', screen: 'MyRides' },
-    { id: '3', title: 'Refer and Earn', icon: 'gift-outline', screen: 'ReferAndEarn' },
-    { id: '4', title: 'My Rewards', icon: 'medal-outline', screen: 'MyRewards' },
-    { id: '5', title: 'Power Pass', icon: 'card-outline', screen: 'PowerPass' },
-    { id: '6', title: 'Rapido Coins', icon: 'cash-outline', screen: 'Coins' },
-    { id: '7', title: 'Notifications', icon: 'notifications-outline', screen: 'Notifications' },
-    { id: '8', title: 'Claims', icon: 'shield-checkmark-outline', screen: 'Claims' },
-    { id: '9', title: 'Settings', icon: 'settings-outline', screen: 'Settings' },
-    { id: '10', title: 'Help', icon: 'help-circle-outline', screen: 'Help' },
+    { id: '3', title: 'Payment Methods', icon: 'card-outline', screen: 'Payment' },
+    { id: '4', title: 'Notifications', icon: 'notifications-outline', screen: 'Notifications' },
+    { id: '5', title: 'Refer and Earn', icon: 'gift-outline', screen: 'ReferAndEarn' },
+    { id: '6', title: 'My Rewards', icon: 'medal-outline', screen: 'MyRewards' },
+    { id: '7', title: 'Settings', icon: 'settings-outline', screen: 'Settings' },
+    { id: '8', title: 'Help & Support', icon: 'help-circle-outline', screen: 'Help' },
   ];
 
   return (
@@ -92,6 +90,10 @@ export default function MyAccountScreen({ navigation }: any) {
               onPress={() => {
                 if (item.screen === 'MyRides') {
                   navigation.navigate('My Rides');
+                } else if (item.screen === 'ReferAndEarn') {
+                  Alert.alert('Refer & Earn', 'Share your referral code DRIVEMATE100 with friends and earn ₹100 per successful referral!');
+                } else if (item.screen === 'MyRewards') {
+                  Alert.alert('DriveMate Rewards', 'You have earned 150 DriveMate points! Redeemable on your next auto or car ride.');
                 } else {
                   navigation.navigate(item.screen);
                 }

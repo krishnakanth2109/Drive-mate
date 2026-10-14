@@ -13,8 +13,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { socket } from '../../../services/api';
-import { useRider } from '../../../context/RiderContext';
+import { socket } from '../../services/api';
+import { useRider } from '../../context/RiderContext';
 
 export default function ChatScreen({ route }: any) {
   const navigation = useNavigation<any>();

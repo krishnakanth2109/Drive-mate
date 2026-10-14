@@ -53,7 +53,7 @@ const MapArea = () => {
         pickupCoord={activeData ? { lat: activeData.pickup.lat, lng: activeData.pickup.lng } : null}
         dropCoord={activeData ? { lat: activeData.drop.lat, lng: activeData.drop.lng } : null}
         routeCoords={routeCoords}
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
       />
     </View>
   );
@@ -92,7 +92,7 @@ const BottomPanel = () => {
 
   // Timer logic for wait time
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: any;
     if (activeRide?.status === 'arrived' && activeRide.arrivedAt) {
       interval = setInterval(() => {
         setWaitTime(Date.now() - new Date(activeRide.arrivedAt!).getTime());

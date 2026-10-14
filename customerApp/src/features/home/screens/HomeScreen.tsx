@@ -517,7 +517,8 @@ const DashboardContent = ({ navigation }: any) => {
       {/* Bottom overlay */}
       <KeyboardAvoidingView 
         style={styles.overlay} 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        pointerEvents="box-none"
       >
         <InputPanel isPinPicking={isPinPicking} setIsPinPicking={setIsPinPicking} pinLocation={pinLocation} />
         <StatusPanel />

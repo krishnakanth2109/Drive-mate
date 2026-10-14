@@ -25,13 +25,13 @@ const RiderContext = createContext<RiderContextType>({} as RiderContextType);
 export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
   const [isOnline, setIsOnline] = useState(false);
   const [location, setLocation] = useState<any>(null);
-  const [googleMapsKey, setGoogleMapsKey] = useState<string | null>(null);
+  const [googleMapsKey, setGoogleMapsKey] = useState<string | null>('AIzaSyDOMtmUqwZCLcEHSGQI4WpBLnvBiEPmX2E');
   const [incomingRequest, setIncomingRequest] = useState<Ride | null>(null);
   const [activeRide, setActiveRide] = useState<Ride | null>(null);
   
   // Interval & Timeout references
-  const locationInterval = useRef<NodeJS.Timeout | null>(null);
-  const requestTimeout = useRef<NodeJS.Timeout | null>(null);
+  const locationInterval = useRef<any>(null);
+  const requestTimeout = useRef<any>(null);
 
   // 1. Initial Permission & Current Location
   useEffect(() => {
@@ -262,7 +262,13 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
       stopLocationUpdates();
       await AsyncStorage.clear();
       socket.disconnect();
-      nav.replace('Login');
+      if (nav?.replace) {
+        nav.replace('Login');
+      } else if (nav?.reset) {
+        nav.reset({ index: 0, routes: [{ name: 'Login' }] });
+      } else if (nav?.navigate) {
+        nav.navigate('Login');
+      }
   };
 
   return (

@@ -48,7 +48,7 @@ export default function OTPVerificationScreen({ navigation }: Props) {
           {otp.map((digit, index) => (
             <TextInput
               key={index}
-              ref={(ref) => inputs.current[index] = ref}
+              ref={(ref) => { inputs.current[index] = ref; }}
               style={styles.otpInput}
               keyboardType="number-pad"
               maxLength={1}

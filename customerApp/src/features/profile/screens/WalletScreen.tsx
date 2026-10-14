@@ -2,7 +2,6 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, FlatList, Platform, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import RazorpayCheckout from 'react-native-razorpay';
 import { api } from '../../../services/api';
 
 export default function WalletScreen() {
@@ -40,6 +39,13 @@ export default function WalletScreen() {
         },
         theme: { color: '#3b5998' }
       };
+
+      let RazorpayCheckout: any = null;
+      try {
+        RazorpayCheckout = require('react-native-razorpay').default;
+      } catch (_) {
+        RazorpayCheckout = null;
+      }
 
       if (!RazorpayCheckout || typeof RazorpayCheckout.open !== 'function') {
         Alert.alert('Razorpay Preview', 'Online payment requires a native standalone build. Mock $50 added to your wallet for testing.');
