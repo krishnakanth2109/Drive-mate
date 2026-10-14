@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function SplashScreen({ navigation }: any) {
   const fadeAnim = new Animated.Value(0);
@@ -10,9 +11,14 @@ export default function SplashScreen({ navigation }: any) {
       toValue: 1,
       duration: 1500,
       useNativeDriver: true,
-    }).start(() => {
+    }).start(async () => {
+      const token = await AsyncStorage.getItem('token');
       setTimeout(() => {
-        navigation.replace('Login'); // Or Onboarding based on storage
+        if (token) {
+          navigation.replace('MainTabs');
+        } else {
+          navigation.replace('Login');
+        }
       }, 1000);
     });
   }, []);

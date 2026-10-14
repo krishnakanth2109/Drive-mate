@@ -22,7 +22,7 @@ export default function OTPVerificationScreen({ navigation }: Props) {
   };
 
   const handleVerify = () => {
-    navigation.replace('MainTabs');
+    navigation.replace('Main');
   };
 
   return (
@@ -48,7 +48,7 @@ export default function OTPVerificationScreen({ navigation }: Props) {
           {otp.map((digit, index) => (
             <TextInput
               key={index}
-              ref={(ref) => inputs.current[index] = ref}
+              ref={(ref) => { inputs.current[index] = ref; }}
               style={styles.otpInput}
               keyboardType="number-pad"
               maxLength={1}

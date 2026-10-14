@@ -11,7 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { api, connectSocket, socket } from '../../services/api';
+import { api, connectSocket, socket } from '../../../services/api';
 
 export default function LoginScreen({ navigation }: any) {
   const [isLogin, setIsLogin] = useState(true);
@@ -45,7 +45,7 @@ export default function LoginScreen({ navigation }: any) {
         await connectSocket();
         socket.emit('join_room', user._id);
 
-        navigation.replace('MainTabs');
+        navigation.replace('Main');
       } catch (err: any) {
         console.error(err);
         Alert.alert(

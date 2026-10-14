@@ -14,8 +14,8 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
-import WebMapView from '../../components/WebMapView';
-import { CustomerProvider, useCustomer } from '../../context/CustomerContext';
+import WebMapView from '../../../components/WebMapView';
+import { CustomerProvider, useCustomer } from '../../../context/CustomerContext';
 
 
 const { width, height } = Dimensions.get('window');
@@ -481,8 +481,16 @@ const DashboardContent = ({ navigation }: any) => {
 
       {/* Top bar */}
       <View style={styles.topBar}>
-        <View style={styles.appBrand}>
-          <Text style={styles.brandText}>RIDE</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <TouchableOpacity 
+            style={styles.menuBtn} 
+            onPress={() => navigation.toggleDrawer && navigation.toggleDrawer()}
+          >
+            <Text style={{ fontSize: 24, color: '#1a1a2e' }}>☰</Text>
+          </TouchableOpacity>
+          <View style={styles.appBrand}>
+            <Text style={styles.brandText}>RIDE</Text>
+          </View>
         </View>
         <TouchableOpacity style={styles.logoutBtn} onPress={() => logout(navigation)}>
           <Text style={styles.logoutText}>Log Out</Text>
@@ -559,6 +567,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  menuBtn: {
+    backgroundColor: '#fff',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   appBrand: {
     backgroundColor: '#f72585',

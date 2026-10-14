@@ -42,15 +42,40 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
         return;
       }
       try {
-        const loc = await Location.getCurrentPositionAsync({});
-        setLocation({
-          latitude: loc.coords.latitude,
-          longitude: loc.coords.longitude,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
-        });
+        // Fast path: use last known position immediately to get past loading screen
+        let loc = await Location.getLastKnownPositionAsync({});
+        if (loc) {
+          setLocation({
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude,
+            latitudeDelta: 0.05,
+            longitudeDelta: 0.05,
+          });
+        }
+        
+        // Accurate path: attempt to get current position with a 5-second timeout
+        const currentLoc = await Promise.race([
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
+        ]) as any;
+
+        if (currentLoc) {
+            setLocation({
+                latitude: currentLoc.coords.latitude,
+                longitude: currentLoc.coords.longitude,
+                latitudeDelta: 0.05,
+                longitudeDelta: 0.05,
+            });
+        }
       } catch (e) {
-        console.log("Location fetch error on init", e);
+        console.log("Location fetch error/timeout on init", e);
+        // If location is STILL null, set a fallback location (e.g. New Delhi) so the app loads
+        setLocation((prev: any) => prev || {
+            latitude: 28.6139,
+            longitude: 77.2090,
+            latitudeDelta: 0.05,
+            longitudeDelta: 0.05,
+        });
       }
     })();
 
@@ -121,7 +146,7 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
     
     locationInterval.current = setInterval(async () => {
         try {
-            const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+            const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
             const { latitude, longitude, heading } = loc.coords;
             
             setLocation((prev: any) => ({

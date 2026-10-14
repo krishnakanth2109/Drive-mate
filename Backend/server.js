@@ -11,6 +11,7 @@ import rideRoutes from './routes/rideRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import profileRoutes from './routes/profileRoutes.js';
 import rbacRoutes from './routes/rbacRoutes.js';
+import paymentRoutes from './routes/paymentRoutes.js';
 
 dotenv.config();
 
@@ -43,6 +44,7 @@ app.use('/api/ride', rideRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/rbac', rbacRoutes);
+app.use('/api/payment', paymentRoutes);
 
 app.get('/api/config/maps-key', (req, res) => {
   res.json({ key: process.env.GOOGLE_MAPS_API_KEY });
@@ -100,6 +102,18 @@ io.on('connection', (socket) => {
       lat,
       lng,
       heading
+    });
+  });
+
+  // 5. Real-time Chat functionality for Ride
+  socket.on('send_chat_message', (data) => {
+    const { rideId, sender, text, time } = data;
+    // Emit message to everyone in the ride room EXCEPT the sender
+    socket.to(`ride_${rideId}`).emit('receive_chat_message', {
+      id: Date.now().toString(),
+      sender,
+      text,
+      time
     });
   });
 

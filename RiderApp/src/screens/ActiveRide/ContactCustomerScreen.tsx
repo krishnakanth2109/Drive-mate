@@ -11,8 +11,8 @@ export default function ContactCustomerScreen({ navigation, route }: any) {
     Linking.openURL(`tel:${customerPhone}`);
   };
 
-  const handleMessage = () => {
-    Linking.openURL(`sms:${customerPhone}`);
+  const handleChat = () => {
+    navigation.navigate('ChatScreen', { customerName, customerPhone });
   };
 
   return (
@@ -38,9 +38,9 @@ export default function ContactCustomerScreen({ navigation, route }: any) {
             <Text style={styles.btnText}>Call</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={[styles.actionBtn, styles.msgBtn]} onPress={handleMessage}>
-            <Ionicons name="chatbubble" size={24} color="#fff" />
-            <Text style={styles.btnText}>Message</Text>
+          <TouchableOpacity style={[styles.actionBtn, styles.msgBtn]} onPress={handleChat}>
+            <Ionicons name="chatbubble-ellipses" size={24} color="#fff" />
+            <Text style={styles.btnText}>Chat</Text>
           </TouchableOpacity>
         </View>
       </View>

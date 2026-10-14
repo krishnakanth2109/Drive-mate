@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Linking, Share, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 
 type RideStatusCardProps = {
   status: 'searching' | 'arriving' | 'arrived' | 'on_trip';
@@ -11,6 +12,7 @@ import RideSidebarOptions from './RideSidebarOptions';
 
 export default function RideStatusCard({ status, etaMinutes, message }: RideStatusCardProps) {
   const [isSidebarVisible, setSidebarVisible] = useState(false);
+  const navigation = useNavigation<any>();
   
   const getStatusConfig = () => {
     switch(status) {
@@ -55,14 +57,9 @@ export default function RideStatusCard({ status, etaMinutes, message }: RideStat
         ]);
         break;
       case 'cancel':
-        Alert.alert(
-          'Cancel Ride', 
-          'Are you sure you want to cancel this ride? A cancellation fee may apply.',
-          [
-            { text: 'No, keep it', style: 'cancel' },
-            { text: 'Yes, Cancel', style: 'destructive', onPress: () => console.log('Ride cancelled') }
-          ]
-        );
+        // Close sidebar first, then navigate
+        setSidebarVisible(false);
+        navigation.navigate('CancelRide');
         break;
     }
   };

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import { useCustomer } from '../../context/CustomerContext';
+import { useCustomer } from '../../../context/CustomerContext';
 
 export default function MyAccountScreen({ navigation }: any) {
   const { logout } = useCustomer();
@@ -24,7 +24,7 @@ export default function MyAccountScreen({ navigation }: any) {
   }, []);
 
   const menuItems = [
-    { id: '1', title: 'Payment', icon: 'wallet-outline', screen: 'Payment' },
+    { id: '1', title: 'My Wallet', icon: 'wallet-outline', screen: 'Wallet' },
     { id: '2', title: 'My Rides', icon: 'time-outline', screen: 'MyRides' },
     { id: '3', title: 'Refer and Earn', icon: 'gift-outline', screen: 'ReferAndEarn' },
     { id: '4', title: 'My Rewards', icon: 'medal-outline', screen: 'MyRewards' },

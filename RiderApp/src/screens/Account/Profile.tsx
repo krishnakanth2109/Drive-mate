@@ -15,7 +15,8 @@ export default function ProfileScreen({ navigation }: any) {
   }, []);
 
   const menuItems = [
-    { title: 'My Earnings', icon: 'wallet-outline', screen: 'Earnings' },
+    { title: 'My Earnings', icon: 'cash-outline', screen: 'Earnings' },
+    { title: 'My Wallet', icon: 'wallet-outline', screen: 'Wallet' },
     { title: 'Documents & Verification', icon: 'document-text-outline', screen: 'Documents' },
     { title: 'Vehicle Information', icon: 'car-outline', screen: 'Vehicle' },
     { title: 'Support & Help', icon: 'help-circle-outline', screen: 'Support' },

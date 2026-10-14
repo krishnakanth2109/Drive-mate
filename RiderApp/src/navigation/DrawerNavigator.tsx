@@ -54,7 +54,7 @@ export default function DrawerNavigator() {
         drawerActiveBackgroundColor: '#f72585',
         drawerActiveTintColor: '#fff',
         drawerInactiveTintColor: '#333',
-        drawerLabelStyle: { marginLeft: -20, fontSize: 15, fontWeight: '500' }
+        drawerLabelStyle: { fontSize: 15, fontWeight: '500' }
       }}
     >
       <Drawer.Screen 

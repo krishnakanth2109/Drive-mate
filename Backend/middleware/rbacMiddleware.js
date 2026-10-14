@@ -6,7 +6,7 @@ import Role from '../models/Role.js';
 // Get user's effective permissions (with caching)
 export const getEffectivePermissions = async (userId) => {
   const cacheKey = `user_permissions:${userId}`;
-  
+
   try {
     const cached = await redisClient.get(cacheKey);
     if (cached) return JSON.parse(cached);
@@ -18,7 +18,7 @@ export const getEffectivePermissions = async (userId) => {
   if (!admin || !admin.isActive) return [];
 
   const permissions = new Set();
-  
+
   // Aggregate permissions from all active roles
   for (const role of admin.roles) {
     if (role.status === 'Active') {
@@ -27,14 +27,14 @@ export const getEffectivePermissions = async (userId) => {
   }
 
   const permissionsArray = Array.from(permissions);
-  
+
   try {
     // Cache for 1 hour
     await redisClient.setEx(cacheKey, 3600, JSON.stringify(permissionsArray));
   } catch (err) {
     console.error('Redis error on set:', err);
   }
-  
+
   return permissionsArray;
 };
 
@@ -47,7 +47,7 @@ export const requirePermission = (permission) => {
       }
 
       const permissions = await getEffectivePermissions(req.user._id);
-      
+
       // If no permissions, deny
       if (!permissions || permissions.length === 0) {
         return res.status(403).json({

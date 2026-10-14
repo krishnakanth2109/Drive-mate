@@ -49,7 +49,7 @@ export default function OnboardingScreen({ navigation }: Props) {
     if (currentIndex < slides.length - 1) {
       setCurrentIndex(currentIndex + 1);
     } else {
-      navigation.replace('Login');
+      navigation.replace('Auth');
     }
   };
 
@@ -88,7 +88,7 @@ export default function OnboardingScreen({ navigation }: Props) {
 
         <View style={styles.buttonContainer}>
           {currentIndex < slides.length - 1 ? (
-            <TouchableOpacity onPress={() => navigation.replace('Login')} style={styles.skipButton}>
+            <TouchableOpacity onPress={() => navigation.replace('Auth')} style={styles.skipButton}>
               <Text style={styles.skipText}>Skip</Text>
             </TouchableOpacity>
           ) : (

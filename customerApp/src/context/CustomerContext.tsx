@@ -343,7 +343,7 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
     await AsyncStorage.multiRemove(['token', 'user', 'userId']);
     socket.disconnect();
     resetFlow();
-    navigation.replace('Login');
+    navigation.replace('Auth');
   }, [resetFlow]);
 
   return (
