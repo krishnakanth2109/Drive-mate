@@ -5,6 +5,7 @@ import http from 'http';
 import { Server } from 'socket.io';
 import dotenv from 'dotenv';
 import { connectRedis } from './config/redis.js';
+import { connectPostgres, pool as pgPool } from './config/postgres.js';
 
 import userRoutes from './routes/userRoutes.js';
 import rideRoutes from './routes/rideRoutes.js';
@@ -52,6 +53,27 @@ app.get('/api/config/maps-key', (req, res) => {
   res.json({ key: process.env.GOOGLE_MAPS_API_KEY });
 });
 
+app.get('/api/health', async (req, res) => {
+  const mongoStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+  let pgStatus = 'disconnected';
+  if (pgPool) {
+    try {
+      await pgPool.query('SELECT 1');
+      pgStatus = 'connected';
+    } catch (e) {
+      pgStatus = 'error';
+    }
+  }
+  res.json({
+    status: 'ok',
+    services: {
+      mongodb: mongoStatus,
+      neonPostgres: pgStatus
+    },
+    timestamp: new Date().toISOString()
+  });
+});
+
 // --- Global Error Handler ---
 app.use(errorHandler);
 
@@ -64,6 +86,9 @@ mongoose.connect(process.env.MONGO_URI)
 connectRedis()
   .then(() => console.log('✅ Redis Connected'))
   .catch(err => console.log('❌ Redis Error:', err));
+
+// --- Neon PostgreSQL Connection ---
+connectPostgres();
 
 // --- Socket Logic ---
 io.on('connection', (socket) => {
