@@ -50,7 +50,7 @@ CREATE TABLE "riders" (
 -- CreateTable
 CREATE TABLE "rides" (
     "id" TEXT NOT NULL,
-    "customer_id" TEXT NOT NULL,
+    "customer_id" TEXT,
     "rider_id" TEXT,
     "pickup_address" TEXT,
     "pickup_lat" DOUBLE PRECISION,
