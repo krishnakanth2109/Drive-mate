@@ -210,21 +210,58 @@ export const updateRideStatus = asyncHandler(async (req, res) => {
 });
 
 export const cancelRide = asyncHandler(async (req, res) => {
-  const { rideId } = req.body;
+  const { rideId, reason } = req.body;
 
   const ride = await Ride.findById(rideId);
   if (!ride) throw new ApiError(404, 'Ride not found');
-  if (!['pending', 'accepted'].includes(ride.status)) {
+  if (!['pending', 'accepted', 'arrived'].includes(ride.status)) {
     throw new ApiError(400, 'Cannot cancel this ride');
   }
 
   ride.status = 'cancelled';
+  ride.cancellationReason = reason || 'No reason provided';
+  ride.cancelledBy = req.user?.role || 'rider';
   await ride.save();
 
   if (ride.rider) {
     await Rider.findByIdAndUpdate(ride.rider, { isAvailable: true });
-    req.io.to(ride.rider.toString()).emit('ride_cancelled', { rideId });
+    req.io.to(ride.rider.toString()).emit('ride_cancelled', { rideId, reason });
   }
 
-  res.status(200).json(new ApiResponse(200, null, 'Ride cancelled successfully'));
+  if (ride.customer) {
+    req.io.to(ride.customer.toString()).emit('ride_cancelled', { rideId, reason });
+  }
+
+  req.io.to(`ride_${ride._id}`).emit('ride_cancelled', { rideId, reason });
+
+  res.status(200).json(new ApiResponse(200, { ride }, 'Ride cancelled successfully'));
 });
+
+export const getRiderHistory = asyncHandler(async (req, res) => {
+  const rides = await Ride.find({ rider: req.user.id })
+    .populate('customer', 'name phone')
+    .sort({ createdAt: -1 });
+
+  res.status(200).json(new ApiResponse(200, rides, 'Rider trip history fetched'));
+});
+
+export const getRiderActiveRide = asyncHandler(async (req, res) => {
+  const activeRide = await Ride.findOne({
+    rider: req.user.id,
+    status: { $in: ['accepted', 'arrived', 'ongoing'] }
+  }).populate('customer', 'name phone');
+
+  res.status(200).json(new ApiResponse(200, activeRide, 'Active ride fetched'));
+});
+
+export const getRideById = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const ride = await Ride.findById(id)
+    .populate('customer', 'name phone')
+    .populate('rider', 'name phone vehicle vehicleType rating');
+
+  if (!ride) throw new ApiError(404, 'Ride not found');
+
+  res.status(200).json(new ApiResponse(200, ride, 'Ride details fetched'));
+});
+

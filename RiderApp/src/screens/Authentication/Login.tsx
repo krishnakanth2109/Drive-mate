@@ -71,6 +71,13 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
           onChangeText={setPassword} 
         />
         
+        <TouchableOpacity
+          onPress={() => navigation.navigate('ForgotPassword')}
+          style={{ alignSelf: 'flex-end', marginBottom: 15 }}
+        >
+          <Text style={{ color: '#007AFF', fontSize: 13, fontWeight: '600' }}>Forgot Password?</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity style={styles.btn} onPress={handleLogin} disabled={loading}>
           {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Login & Start Driving</Text>}
         </TouchableOpacity>

@@ -44,6 +44,8 @@ const RideSchema = new mongoose.Schema(
     otp: { type: String },
     arrivedAt: { type: Date },
     waitCharges: { type: Number, default: 0 },
+    cancellationReason: { type: String, default: null },
+    cancelledBy: { type: String, enum: ['customer', 'rider', 'system'], default: null },
   },
   { timestamps: true }
 );

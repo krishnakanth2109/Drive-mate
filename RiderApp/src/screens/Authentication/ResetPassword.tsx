@@ -1,20 +1,48 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/stack';
+import { riderService } from '../../services/riderService';
 
 type Props = {
   navigation: StackNavigationProp<any, 'ResetPassword'>;
+  route: any;
 };
 
-export default function ResetPasswordScreen({ navigation }: Props) {
+export default function ResetPasswordScreen({ navigation, route }: Props) {
+  const email = route?.params?.email || '';
+
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleSave = () => {
-    // Save new password logic here
-    navigation.navigate('Login');
+  const handleSave = async () => {
+    if (!password || !confirmPassword) {
+      Alert.alert('Missing Fields', 'Please fill in both password fields.');
+      return;
+    }
+
+    if (password.length < 6) {
+      Alert.alert('Weak Password', 'Password must be at least 6 characters long.');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      Alert.alert('Mismatch', 'Passwords do not match. Please verify.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await riderService.resetPassword(email, password);
+      Alert.alert('Success!', 'Your password has been reset successfully. Please login.');
+      navigation.navigate('Login');
+    } catch (err: any) {
+      Alert.alert('Error', err.response?.data?.message || 'Failed to reset password');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -29,7 +57,7 @@ export default function ResetPasswordScreen({ navigation }: Props) {
       <View style={styles.content}>
         <Text style={styles.title}>Create New Password</Text>
         <Text style={styles.subtitle}>
-          Your new password must be unique from those previously used.
+          Your new password must be at least 6 characters long.
         </Text>
 
         <View style={styles.inputContainer}>
@@ -59,8 +87,8 @@ export default function ResetPasswordScreen({ navigation }: Props) {
           />
         </View>
 
-        <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-          <Text style={styles.saveButtonText}>Reset Password</Text>
+        <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={loading}>
+          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Reset Password</Text>}
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>

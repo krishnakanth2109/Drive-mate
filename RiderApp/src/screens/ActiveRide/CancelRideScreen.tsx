@@ -1,10 +1,16 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRider } from '../../context/RiderContext';
+import { riderService } from '../../services/riderService';
 
-export default function CancelRideScreen({ navigation }: any) {
+export default function CancelRideScreen({ navigation, route }: any) {
+  const { activeRide } = useRider();
+  const rideId = route?.params?.rideId || activeRide?._id;
+
   const [selectedReason, setSelectedReason] = useState<string | null>(null);
   const [otherReason, setOtherReason] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const reasons = [
     'Rider no-show',
@@ -14,18 +20,33 @@ export default function CancelRideScreen({ navigation }: any) {
     'Other'
   ];
 
-  const handleCancelTrip = () => {
+  const handleCancelTrip = async () => {
     if (!selectedReason) {
       Alert.alert('Error', 'Please select a reason for cancellation.');
       return;
     }
-    
-    // API call to cancel would go here
-    Alert.alert(
-      'Ride Cancelled',
-      'This trip has been cancelled successfully.',
-      [{ text: 'OK', onPress: () => navigation.navigate('MainDashboard') }]
-    );
+
+    const reasonFinal = selectedReason === 'Other' ? otherReason : selectedReason;
+
+    if (!rideId) {
+      Alert.alert('Notice', 'No active ride to cancel.');
+      navigation.goBack();
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await riderService.cancelRide(rideId, reasonFinal);
+      Alert.alert(
+        'Ride Cancelled',
+        'This trip has been cancelled successfully.',
+        [{ text: 'OK', onPress: () => navigation.navigate('MainTabs') }]
+      );
+    } catch (err: any) {
+      Alert.alert('Error', err.response?.data?.message || 'Failed to cancel ride');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

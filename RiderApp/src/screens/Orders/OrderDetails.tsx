@@ -1,68 +1,112 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { StackNavigationProp } from '@react-navigation/stack';
+import { riderService } from '../../services/riderService';
+import { Ride } from '../../services/types';
 
-type Props = {
-  navigation: StackNavigationProp<any, 'OrderDetails'>;
-};
+export default function OrderDetailsScreen({ navigation, route }: any) {
+  const initialRide: Ride | null = route?.params?.ride || null;
+  const rideId: string = route?.params?.rideId || initialRide?._id || '';
 
-export default function OrderDetailsScreen({ navigation }: Props) {
+  const [ride, setRide] = useState<Ride | null>(initialRide);
+  const [loading, setLoading] = useState(!initialRide && !!rideId);
+
+  useEffect(() => {
+    if (rideId) {
+      riderService.getRideDetails(rideId)
+        .then(data => setRide(data))
+        .catch(err => console.log('Failed to fetch ride details:', err))
+        .finally(() => setLoading(false));
+    }
+  }, [rideId]);
+
+  const dateFormatted = ride?.createdAt
+    ? new Date(ride.createdAt).toLocaleString('en-IN', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : 'Today, 10:30 AM';
+
+  const isCompleted = ride?.status === 'completed';
+  const fare = ride?.fare || 500;
+  const distance = ride?.distance ? `${ride.distance} km` : '15 km';
+  const duration = ride?.duration ? `${ride.duration} mins` : '35 mins';
+  const waitCharges = ride?.waitCharges || 0;
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Order #8942</Text>
+        <Text style={styles.headerTitle}>Order #{ride?._id ? ride._id.slice(-6).toUpperCase() : '8942'}</Text>
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.statusCard}>
-          <Text style={styles.statusText}>Completed</Text>
-          <Text style={styles.dateText}>Today, 10:30 AM</Text>
+      {loading ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color="#f72585" />
         </View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.content}>
+          <View style={styles.statusCard}>
+            <Text style={[styles.statusText, { color: isCompleted ? '#4CAF50' : '#f72585' }]}>
+              {ride?.status ? ride.status.toUpperCase() : 'COMPLETED'}
+            </Text>
+            <Text style={styles.dateText}>{dateFormatted}</Text>
+          </View>
 
-        <View style={styles.routeCard}>
-          <View style={styles.routePoint}>
-            <Ionicons name="radio-button-on" size={16} color="#4CAF50" />
-            <Text style={styles.pointText}>123 Main St, Apartment 4B</Text>
+          <View style={styles.routeCard}>
+            <View style={styles.routePoint}>
+              <Ionicons name="radio-button-on" size={16} color="#4CAF50" />
+              <Text style={styles.pointText}>{ride?.pickup?.address || 'Pickup Location'}</Text>
+            </View>
+            <View style={styles.routeLine} />
+            <View style={styles.routePoint}>
+              <Ionicons name="location" size={16} color="#f72585" />
+              <Text style={styles.pointText}>{ride?.drop?.address || 'Dropoff Location'}</Text>
+            </View>
           </View>
-          <View style={styles.routeLine} />
-          <View style={styles.routePoint}>
-            <Ionicons name="location" size={16} color="#f72585" />
-            <Text style={styles.pointText}>City Airport, Terminal 1</Text>
-          </View>
-        </View>
 
-        <View style={styles.earningsCard}>
-          <Text style={styles.earningsTitle}>Trip Earnings</Text>
-          
-          <View style={styles.earningsRow}>
-            <Text style={styles.earningsLabel}>Base Fare</Text>
-            <Text style={styles.earningsValue}>₹200</Text>
+          <View style={styles.earningsCard}>
+            <Text style={styles.earningsTitle}>Trip Earnings & Fare</Text>
+            
+            <View style={styles.earningsRow}>
+              <Text style={styles.earningsLabel}>Vehicle Type</Text>
+              <Text style={styles.earningsValue}>{ride?.vehicleType ? ride.vehicleType.toUpperCase() : 'BIKE'}</Text>
+            </View>
+            <View style={styles.earningsRow}>
+              <Text style={styles.earningsLabel}>Distance ({distance})</Text>
+              <Text style={styles.earningsValue}>₹{Math.round(fare * 0.7)}</Text>
+            </View>
+            <View style={styles.earningsRow}>
+              <Text style={styles.earningsLabel}>Duration ({duration})</Text>
+              <Text style={styles.earningsValue}>₹{Math.round(fare * 0.3)}</Text>
+            </View>
+            {waitCharges > 0 && (
+              <View style={styles.earningsRow}>
+                <Text style={styles.earningsLabel}>Waiting Charges</Text>
+                <Text style={styles.earningsValue}>+₹{waitCharges}</Text>
+              </View>
+            )}
+            <View style={styles.divider} />
+            <View style={styles.earningsRow}>
+              <Text style={styles.totalLabel}>Total Payout</Text>
+              <Text style={styles.totalValue}>₹{fare}</Text>
+            </View>
           </View>
-          <View style={styles.earningsRow}>
-            <Text style={styles.earningsLabel}>Distance (15 km)</Text>
-            <Text style={styles.earningsValue}>₹250</Text>
-          </View>
-          <View style={styles.earningsRow}>
-            <Text style={styles.earningsLabel}>Time (35 mins)</Text>
-            <Text style={styles.earningsValue}>₹50</Text>
-          </View>
-          <View style={styles.divider} />
-          <View style={styles.earningsRow}>
-            <Text style={styles.totalLabel}>Total Earnings</Text>
-            <Text style={styles.totalValue}>₹500</Text>
-          </View>
-        </View>
 
-        <TouchableOpacity style={styles.helpBtn}>
-          <Ionicons name="help-circle-outline" size={20} color="#f72585" />
-          <Text style={styles.helpText}>Get help with this trip</Text>
-        </TouchableOpacity>
-      </ScrollView>
+          <TouchableOpacity
+            style={styles.helpBtn}
+            onPress={() => navigation.navigate('RaiseTicket', { rideId: ride?._id, type: 'fare_issue' })}
+          >
+            <Ionicons name="help-circle-outline" size={20} color="#f72585" />
+            <Text style={styles.helpText}>Get help with this trip</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      )}
     </View>
   );
 }

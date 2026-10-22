@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/stack';
+import { riderService } from '../../services/riderService';
 
 type Props = {
   navigation: StackNavigationProp<any, 'ForgotPassword'>;
@@ -9,10 +10,24 @@ type Props = {
 
 export default function ForgotPasswordScreen({ navigation }: Props) {
   const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleReset = () => {
-    // Navigate to OTP or Reset Password directly depending on flow
-    navigation.navigate('ResetPassword');
+  const handleReset = async () => {
+    if (!email.trim()) {
+      Alert.alert('Required', 'Please enter your email address');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await riderService.forgotPassword(email.trim());
+      Alert.alert('Verification Code Sent', res.demoOtp ? `Code: ${res.demoOtp}` : 'A 4-digit verification code has been sent to your email.');
+      navigation.navigate('OTPVerification', { email: email.trim(), demoOtp: res.demoOtp });
+    } catch (err: any) {
+      Alert.alert('Error', err.response?.data?.message || 'Failed to send reset code');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -31,7 +46,7 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
         
         <Text style={styles.title}>Forgot Password?</Text>
         <Text style={styles.subtitle}>
-          Don't worry! It happens. Please enter the email address associated with your account.
+          Don't worry! It happens. Please enter the email address associated with your partner account.
         </Text>
 
         <View style={styles.inputContainer}>
@@ -47,8 +62,12 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
           />
         </View>
 
-        <TouchableOpacity style={styles.resetButton} onPress={handleReset}>
-          <Text style={styles.resetButtonText}>Send Reset Link</Text>
+        <TouchableOpacity style={styles.resetButton} onPress={handleReset} disabled={loading}>
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.resetButtonText}>Send Reset Code</Text>
+          )}
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>

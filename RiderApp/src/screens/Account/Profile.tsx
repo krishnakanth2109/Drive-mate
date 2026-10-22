@@ -1,18 +1,40 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRider } from '../../context/RiderContext';
+import { riderService } from '../../services/riderService';
+import { RiderProfile } from '../../services/types';
 
 export default function ProfileScreen({ navigation }: any) {
   const { logout } = useRider();
-  const [driverData, setDriverData] = useState<any>(null);
+  const [profile, setProfile] = useState<RiderProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchProfile = useCallback(async () => {
+    try {
+      const data = await riderService.getProfile();
+      setProfile(data);
+      await AsyncStorage.setItem('rider', JSON.stringify(data));
+    } catch (err) {
+      console.log('Failed to fetch profile from server, trying cache:', err);
+      const cached = await AsyncStorage.getItem('rider');
+      if (cached) setProfile(JSON.parse(cached));
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
-    AsyncStorage.getItem('rider').then(data => {
-      if (data) setDriverData(JSON.parse(data));
-    });
-  }, []);
+    fetchProfile();
+  }, [fetchProfile]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchProfile();
+  };
 
   const menuItems = [
     { title: 'My Earnings', icon: 'cash-outline', screen: 'Earnings' },
@@ -24,27 +46,30 @@ export default function ProfileScreen({ navigation }: any) {
   ];
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#f72585']} />}
+    >
       <View style={styles.header}>
         <View style={styles.avatar}>
           <Ionicons name="person" size={40} color="#fff" />
         </View>
-        <Text style={styles.name}>{driverData?.name || 'Driver Name'}</Text>
-        <Text style={styles.phone}>{driverData?.phone || 'Loading...'}</Text>
+        <Text style={styles.name}>{profile?.name || 'Driver Name'}</Text>
+        <Text style={styles.phone}>{profile?.phone || 'Loading...'}</Text>
         <View style={styles.ratingBadge}>
-          <Text style={styles.ratingText}>4.9 ⭐</Text>
+          <Text style={styles.ratingText}>{profile?.rating ? `${profile.rating} ⭐` : '4.9 ⭐'}</Text>
         </View>
       </View>
 
       <View style={styles.statsRow}>
         <View style={styles.statBox}>
           <Text style={styles.statLabel}>Total Rides</Text>
-          <Text style={styles.statValue}>1,245</Text>
+          <Text style={styles.statValue}>{profile?.totalRides ?? 24}</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statBox}>
           <Text style={styles.statLabel}>Today's Earnings</Text>
-          <Text style={styles.statValue}>₹850</Text>
+          <Text style={styles.statValue}>₹{profile?.todayEarnings ?? 850}</Text>
         </View>
       </View>
 

@@ -1,17 +1,56 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Linking, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { StackNavigationProp } from '@react-navigation/stack';
+import { useRider } from '../../context/RiderContext';
+import { riderService } from '../../services/riderService';
+import { Ride } from '../../services/types';
 
-type Props = {
-  navigation: StackNavigationProp<any, 'ActiveOrder'>;
-};
+export default function ActiveOrderScreen({ navigation }: any) {
+  const { activeRide, arriveAtPickup } = useRider();
+  const [rideData, setRideData] = useState<Ride | null>(activeRide);
+  const [loading, setLoading] = useState(false);
 
-export default function ActiveOrderScreen({ navigation }: Props) {
+  useEffect(() => {
+    if (activeRide) {
+      setRideData(activeRide);
+    } else {
+      riderService.getActiveRide()
+        .then(data => setRideData(data))
+        .catch(err => console.log('No active ride fetched', err));
+    }
+  }, [activeRide]);
+
+  const customerName = rideData?.customer?.name || 'Customer';
+  const customerPhone = rideData?.customer?.phone || '+91 98765 43210';
+  const pickupAddress = rideData?.pickup?.address || '123 Main St, Apartment 4B';
+  const dropAddress = rideData?.drop?.address || 'Destination';
+
+  const handleCall = () => {
+    Linking.openURL(`tel:${customerPhone}`);
+  };
+
+  const handleChat = () => {
+    navigation.navigate('ChatScreen', { customerName, customerPhone });
+  };
+
+  const handleArrive = async () => {
+    setLoading(true);
+    try {
+      const ok = await arriveAtPickup();
+      if (ok) {
+        Alert.alert('Arrived', 'Customer notified that you have arrived at pickup location!');
+      }
+    } catch (err: any) {
+      Alert.alert('Error', 'Failed to update arrival status');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.mapPlaceholder}>
-        <Ionicons name="map" size={80} color="#3b3b4f" />
+        <Ionicons name="map" size={80} color="#f72585" />
         <Text style={styles.mapText}>Live Tracking Map</Text>
         <TouchableOpacity style={styles.navBtn} onPress={() => navigation.navigate('PickupNavigation')}>
           <Ionicons name="navigate" size={24} color="#fff" />
@@ -20,40 +59,57 @@ export default function ActiveOrderScreen({ navigation }: Props) {
 
       <View style={styles.bottomSheet}>
         <View style={styles.dragHandle} />
-        <Text style={styles.statusTitle}>Picking up Customer</Text>
-        <Text style={styles.timeText}>5 mins away • 1.2 km</Text>
+        <Text style={styles.statusTitle}>
+          {rideData?.status === 'arrived' ? 'Waiting for Customer' : 'Picking up Customer'}
+        </Text>
+        <Text style={styles.timeText}>
+          {rideData?.distance ? `${rideData.distance} km away` : '1.2 km away'} • ₹{rideData?.fare || 150}
+        </Text>
 
         <View style={styles.customerCard}>
           <View style={styles.avatarPlaceholder}>
             <Ionicons name="person" size={24} color="#a0a0b0" />
           </View>
           <View style={styles.customerInfo}>
-            <Text style={styles.customerName}>Alex D.</Text>
+            <Text style={styles.customerName}>{customerName}</Text>
             <View style={styles.ratingRow}>
               <Ionicons name="star" size={14} color="#FFD700" />
               <Text style={styles.ratingText}>4.9</Text>
             </View>
           </View>
           <View style={styles.actionButtons}>
-            <TouchableOpacity style={styles.iconBtn}>
+            <TouchableOpacity style={styles.iconBtn} onPress={handleChat}>
               <Ionicons name="chatbubble" size={20} color="#f72585" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.iconBtn}>
-              <Ionicons name="call" size={20} color="#f72585" />
+            <TouchableOpacity style={styles.iconBtn} onPress={handleCall}>
+              <Ionicons name="call" size={20} color="#2ecc71" />
             </TouchableOpacity>
           </View>
         </View>
 
         <View style={styles.locationInfo}>
           <View style={styles.locRow}>
-            <Ionicons name="location" size={20} color="#f72585" />
-            <Text style={styles.locText} numberOfLines={1}>123 Main St, Apartment 4B</Text>
+            <Ionicons name="radio-button-on" size={18} color="#2ecc71" />
+            <Text style={styles.locText} numberOfLines={1}>{pickupAddress}</Text>
+          </View>
+          <View style={[styles.locRow, { marginTop: 8 }]}>
+            <Ionicons name="location" size={18} color="#f72585" />
+            <Text style={styles.locText} numberOfLines={1}>{dropAddress}</Text>
           </View>
         </View>
 
-        <TouchableOpacity style={styles.primaryBtn}>
-          <Text style={styles.primaryBtnText}>Arrived at Pickup</Text>
-        </TouchableOpacity>
+        {rideData?.status !== 'arrived' ? (
+          <TouchableOpacity style={styles.primaryBtn} onPress={handleArrive} disabled={loading}>
+            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Arrived at Pickup</Text>}
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[styles.primaryBtn, { backgroundColor: '#2ecc71' }]}
+            onPress={() => navigation.navigate('DashboardRoot')}
+          >
+            <Text style={styles.primaryBtnText}>Enter Customer OTP</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );

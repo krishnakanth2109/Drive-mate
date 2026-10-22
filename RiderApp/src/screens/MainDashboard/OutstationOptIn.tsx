@@ -1,17 +1,27 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { riderService } from '../../services/riderService';
 
 export default function OutstationOptInScreen({ navigation }: any) {
   const [agreed, setAgreed] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!agreed) {
       Alert.alert('Terms Required', 'Please agree to the outstation terms to proceed.');
       return;
     }
-    Alert.alert('Success!', 'You are now opted in for Outstation Rides! You will start receiving longer trip requests.');
-    navigation.goBack();
+    setLoading(true);
+    try {
+      await riderService.optInOutstation(true);
+      Alert.alert('Success!', 'You are now opted in for Outstation Rides! You will start receiving longer trip requests.');
+      navigation.goBack();
+    } catch (err: any) {
+      Alert.alert('Error', err.response?.data?.message || 'Failed to opt in for outstation');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

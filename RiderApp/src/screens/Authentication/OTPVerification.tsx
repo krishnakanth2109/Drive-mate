@@ -1,14 +1,14 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { StackNavigationProp } from '@react-navigation/stack';
+import { riderService } from '../../services/riderService';
 
-type Props = {
-  navigation: StackNavigationProp<any, 'OTPVerification'>;
-};
+export default function OTPVerificationScreen({ navigation, route }: any) {
+  const email = route?.params?.email || '';
+  const demoOtp = route?.params?.demoOtp || '';
 
-export default function OTPVerificationScreen({ navigation }: Props) {
-  const [otp, setOtp] = useState(['', '', '', '']);
+  const [otp, setOtp] = useState(demoOtp ? demoOtp.split('') : ['', '', '', '']);
+  const [loading, setLoading] = useState(false);
   const inputs = useRef<Array<TextInput | null>>([]);
 
   const handleOtpChange = (value: string, index: number) => {
@@ -22,9 +22,35 @@ export default function OTPVerificationScreen({ navigation }: Props) {
     }
   };
 
-  const handleVerify = () => {
-    // In a real app, verify the OTP here
-    navigation.replace('MainTabs');
+  const handleVerify = async () => {
+    const enteredOtp = otp.join('');
+    if (enteredOtp.length < 4) {
+      Alert.alert('Incomplete Code', 'Please enter the complete 4-digit verification code.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await riderService.verifyOtp(email, enteredOtp);
+      Alert.alert('Verified', 'Code verified successfully. Set your new password.');
+      navigation.navigate('ResetPassword', { email });
+    } catch (err: any) {
+      Alert.alert('Verification Failed', err.response?.data?.message || 'Invalid verification code');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    try {
+      const res = await riderService.forgotPassword(email);
+      Alert.alert('Resent', res.demoOtp ? `New Code: ${res.demoOtp}` : 'A new code has been sent to your email.');
+      if (res.demoOtp) {
+        setOtp(res.demoOtp.split(''));
+      }
+    } catch (err: any) {
+      Alert.alert('Error', err.response?.data?.message || 'Failed to resend code');
+    }
   };
 
   return (
@@ -41,11 +67,11 @@ export default function OTPVerificationScreen({ navigation }: Props) {
         
         <Text style={styles.title}>Verification</Text>
         <Text style={styles.subtitle}>
-          Enter the 4-digit code sent to your registered phone number.
+          Enter the 4-digit code sent to {email || 'your email'}.
         </Text>
 
         <View style={styles.otpContainer}>
-          {otp.map((digit, index) => (
+          {otp.map((digit: string, index: number) => (
             <TextInput
               key={index}
               ref={(ref) => { inputs.current[index] = ref; }}
@@ -63,13 +89,13 @@ export default function OTPVerificationScreen({ navigation }: Props) {
           ))}
         </View>
 
-        <TouchableOpacity style={styles.verifyButton} onPress={handleVerify}>
-          <Text style={styles.verifyButtonText}>Verify Now</Text>
+        <TouchableOpacity style={styles.verifyButton} onPress={handleVerify} disabled={loading}>
+          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.verifyButtonText}>Verify Now</Text>}
         </TouchableOpacity>
 
         <View style={styles.resendContainer}>
           <Text style={styles.resendText}>Didn't receive the code? </Text>
-          <TouchableOpacity>
+          <TouchableOpacity onPress={handleResend}>
             <Text style={styles.resendLink}>Resend</Text>
           </TouchableOpacity>
         </View>

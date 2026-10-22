@@ -30,12 +30,21 @@ import IncentivesScreen from './src/screens/Earnings/Incentives';
 
 // Driver Profile Screens
 import EarningsScreen from './src/screens/Earnings/Earnings';
+import TransactionDetailsScreen from './src/screens/Earnings/TransactionDetails';
 import DocumentsScreen from './src/screens/Account/Documents';
 import VehicleScreen from './src/screens/Account/Vehicle';
 import SupportScreen from './src/screens/Support/HelpCenter';
 import SettingsScreen from './src/screens/Account/Settings';
 import OutstationOptInScreen from './src/screens/MainDashboard/OutstationOptIn';
 import WalletScreen from './src/screens/Account/WalletScreen';
+
+// Support Sub-Screens
+import RaiseTicketScreen from './src/screens/Support/RaiseTicket';
+import FAQsScreen from './src/screens/Support/FAQs';
+import ContactSupportScreen from './src/screens/Support/ContactSupport';
+
+// Notifications
+import NotificationsScreen from './src/screens/Notifications/Notifications';
 
 // Active Ride Interaction Screens
 import ChatScreen from './src/screens/ActiveRide/ChatScreen';
@@ -95,6 +104,13 @@ export default function App() {
           <Stack.Screen name="Offers" component={OffersScreen} options={{ title: 'Offers & Coupons' }} />
           <Stack.Screen name="Incentives" component={IncentivesScreen} options={{ title: 'Rewards' }} />
           <Stack.Screen name="Terms" component={TermsScreen} options={{ title: 'Terms & Conditions' }} />
+
+          {/* Additional Dedicated Screens */}
+          <Stack.Screen name="TransactionDetails" component={TransactionDetailsScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="RaiseTicket" component={RaiseTicketScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="FAQs" component={FAQsScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="ContactSupport" component={ContactSupportScreen} options={{ headerShown: false }} />
         </Stack.Navigator>
       </NavigationContainer>
     </RiderProvider>

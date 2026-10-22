@@ -1,37 +1,70 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { riderService } from '../../services/riderService';
+import { RiderEarningsData } from '../../services/types';
 
-export default function EarningsScreen() {
-  const transactions = [
+export default function EarningsScreen({ navigation }: any) {
+  const [earnings, setEarnings] = useState<RiderEarningsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchEarnings = useCallback(async () => {
+    try {
+      const data = await riderService.getEarnings();
+      setEarnings(data);
+    } catch (err) {
+      console.log('Failed to fetch earnings:', err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchEarnings();
+  }, [fetchEarnings]);
+
+  const handleCashOut = () => {
+    if (navigation) {
+      navigation.navigate('Wallet');
+    } else {
+      Alert.alert('Cash Out', 'Redirecting to Wallet for transfer to your linked bank account.');
+    }
+  };
+
+  const transactions = earnings?.historySummary || [
     { id: '1', day: 'Today', amount: 850, rides: 6 },
     { id: '2', day: 'Yesterday', amount: 1200, rides: 10 },
     { id: '3', day: 'Mon, 31 Aug', amount: 950, rides: 8 },
   ];
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchEarnings(); }} colors={['#2ecc71']} />}
+    >
       <View style={styles.heroCard}>
         <Text style={styles.heroLabel}>Total Balance</Text>
-        <Text style={styles.heroAmount}>₹3,450</Text>
-        <TouchableOpacity style={styles.cashOutBtn}>
-          <Text style={styles.cashOutText}>Cash Out</Text>
+        <Text style={styles.heroAmount}>₹{earnings?.totalBalance ? earnings.totalBalance.toLocaleString() : '3,450'}</Text>
+        <TouchableOpacity style={styles.cashOutBtn} onPress={handleCashOut}>
+          <Text style={styles.cashOutText}>Cash Out to Bank</Text>
         </TouchableOpacity>
       </View>
 
       <Text style={styles.sectionTitle}>Weekly Summary</Text>
       <View style={styles.statsGrid}>
         <View style={styles.statBox}>
-          <Text style={styles.statVal}>24</Text>
+          <Text style={styles.statVal}>{earnings?.weeklyTrips ?? 24}</Text>
           <Text style={styles.statLabel}>Trips</Text>
         </View>
         <View style={styles.statBox}>
-          <Text style={styles.statVal}>32h</Text>
+          <Text style={styles.statVal}>{earnings?.onlineHours ?? '32h'}</Text>
           <Text style={styles.statLabel}>Online</Text>
         </View>
       </View>
 
-      <Text style={styles.sectionTitle}>Recent Payouts</Text>
+      <Text style={styles.sectionTitle}>Recent Payouts & Earnings</Text>
       <View style={styles.listContainer}>
         {transactions.map(item => (
           <View key={item.id} style={styles.row}>
@@ -52,7 +85,7 @@ const styles = StyleSheet.create({
   heroCard: { backgroundColor: '#1a1a2e', padding: 40, alignItems: 'center', borderBottomLeftRadius: 30, borderBottomRightRadius: 30 },
   heroLabel: { color: '#a0a0b0', fontSize: 16, marginBottom: 8 },
   heroAmount: { color: '#fff', fontSize: 48, fontWeight: '900', marginBottom: 20 },
-  cashOutBtn: { backgroundColor: '#2ecc71', paddingHorizontal: 40, paddingVertical: 14, borderRadius: 25 },
+  cashOutBtn: { backgroundColor: '#2ecc71', paddingHorizontal: 32, paddingVertical: 14, borderRadius: 25 },
   cashOutText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   sectionTitle: { fontSize: 18, fontWeight: '700', color: '#1a1a2e', margin: 20, marginBottom: 10 },
   statsGrid: { flexDirection: 'row', paddingHorizontal: 20, gap: 15 },

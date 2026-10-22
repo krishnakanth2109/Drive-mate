@@ -12,6 +12,7 @@ import adminRoutes from './routes/adminRoutes.js';
 import profileRoutes from './routes/profileRoutes.js';
 import rbacRoutes from './routes/rbacRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
+import riderRoutes from './routes/riderRoutes.js';
 
 dotenv.config();
 
@@ -41,6 +42,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 // --- Routes ---
 app.use('/api/users', userRoutes);
 app.use('/api/ride', rideRoutes);
+app.use('/api/rider', riderRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/rbac', rbacRoutes);

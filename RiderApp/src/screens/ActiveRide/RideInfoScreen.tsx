@@ -1,17 +1,28 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRider } from '../../context/RiderContext';
+import { riderService } from '../../services/riderService';
+import { Ride } from '../../services/types';
 
 export default function RideInfoScreen({ navigation, route }: any) {
-  // Mock data
-  const ride = {
-    pickup: '123 Main St, City Center',
-    dropoff: '456 Market St, Uptown',
-    distance: '4.2 miles',
-    estTime: '15 mins',
-    fare: '$12.50',
-    rideType: 'DriveMate Go'
-  };
+  const { activeRide } = useRider();
+  const [ride, setRide] = useState<Ride | null>(route?.params?.ride || activeRide);
+
+  useEffect(() => {
+    if (!ride) {
+      riderService.getActiveRide()
+        .then(data => setRide(data))
+        .catch(err => console.log('No active ride', err));
+    }
+  }, []);
+
+  const pickup = ride?.pickup?.address || 'Pickup Location';
+  const dropoff = ride?.drop?.address || 'Dropoff Location';
+  const fare = ride?.fare ? `₹${ride.fare}` : '₹150.00';
+  const distance = ride?.distance ? `${ride.distance} km` : '4.2 km';
+  const estTime = ride?.duration ? `${ride.duration} mins` : '15 mins';
+  const rideType = ride?.vehicleType ? `DriveMate ${ride.vehicleType.toUpperCase()}` : 'DriveMate Standard';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -31,7 +42,7 @@ export default function RideInfoScreen({ navigation, route }: any) {
             <Ionicons name="radio-button-on" size={20} color="#4CAF50" />
             <View style={styles.locationTextContainer}>
               <Text style={styles.locationLabel}>Pickup</Text>
-              <Text style={styles.locationValue}>{ride.pickup}</Text>
+              <Text style={styles.locationValue}>{pickup}</Text>
             </View>
           </View>
           
@@ -41,7 +52,7 @@ export default function RideInfoScreen({ navigation, route }: any) {
             <Ionicons name="location" size={20} color="#f72585" />
             <View style={styles.locationTextContainer}>
               <Text style={styles.locationLabel}>Dropoff</Text>
-              <Text style={styles.locationValue}>{ride.dropoff}</Text>
+              <Text style={styles.locationValue}>{dropoff}</Text>
             </View>
           </View>
         </View>
@@ -50,22 +61,22 @@ export default function RideInfoScreen({ navigation, route }: any) {
           <Text style={styles.sectionTitle}>Trip Details</Text>
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Estimated Fare</Text>
-            <Text style={styles.detailValueHighlight}>{ride.fare}</Text>
+            <Text style={styles.detailValueHighlight}>{fare}</Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Distance</Text>
-            <Text style={styles.detailValue}>{ride.distance}</Text>
+            <Text style={styles.detailValue}>{distance}</Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Estimated Time</Text>
-            <Text style={styles.detailValue}>{ride.estTime}</Text>
+            <Text style={styles.detailValue}>{estTime}</Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Ride Type</Text>
-            <Text style={styles.detailValue}>{ride.rideType}</Text>
+            <Text style={styles.detailValue}>{rideType}</Text>
           </View>
         </View>
 

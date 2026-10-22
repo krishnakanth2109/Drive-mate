@@ -11,6 +11,8 @@ interface RiderContextType {
   googleMapsKey: string | null;
   incomingRequest: Ride | null;
   activeRide: Ride | null;
+  setActiveRide: (ride: Ride | null) => void;
+  refreshActiveRide: () => Promise<void>;
   toggleOnline: () => void;
   acceptRide: () => void;
   rejectRide: () => void;
@@ -257,6 +259,25 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
     setIncomingRequest(null);
   };
 
+  const refreshActiveRide = async () => {
+    try {
+      const token = await AsyncStorage.getItem('token');
+      if (!token) return;
+      const res = await api.get('/ride/rider/active');
+      if (res.data && res.data.ride) {
+        setActiveRide(res.data.ride);
+      } else {
+        setActiveRide(null);
+      }
+    } catch (e) {
+      console.log('Error checking active ride on init:', e);
+    }
+  };
+
+  useEffect(() => {
+    refreshActiveRide();
+  }, []);
+
   const logout = async (nav: any) => {
       setIsOnline(false);
       stopLocationUpdates();
@@ -274,6 +295,7 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
   return (
     <RiderContext.Provider value={{
       isOnline, location, googleMapsKey, incomingRequest, activeRide,
+      setActiveRide, refreshActiveRide,
       toggleOnline, acceptRide, rejectRide, arriveAtPickup, startRide, completeRide, logout
     }}>
       {children}
