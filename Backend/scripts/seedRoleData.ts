@@ -191,6 +191,7 @@ async function main() {
         name: 'Neha Sharma',
         email: 'neha.sharma@example.com',
         phone: '+919845012345',
+        password: defaultPassword,
         role: 'customer',
         walletBalance: 850.0,
       },

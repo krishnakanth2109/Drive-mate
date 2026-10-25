@@ -5,13 +5,19 @@ async function verifyBackendModels() {
   console.log('🔍 VERIFYING MULTI-ROLE BACKEND MODELS AND DATA IN NEON POSTGRESQL...\n');
 
   // 1. Roles
-  const roles = await prisma.role.findMany({ select: { code: true, name: true, accessScope: true } });
+  const roles = await prisma.role.findMany({
+    select: { code: true, name: true, accessScope: true },
+  });
   console.log(`✅ Roles Table (${roles.length} roles found):`);
   roles.forEach((r) => console.log(`   - [${r.code}] ${r.name} -> Scope: ${r.accessScope}`));
 
   // 2. Staff Admins
   const staff = await prisma.admin.findMany({
-    select: { name: true, email: true, role: true, adminRoles: { include: { role: true } } },
+    include: {
+      adminRoles: {
+        include: { role: true },
+      },
+    },
   });
   console.log(`\n✅ Staff Admins Table (${staff.length} staff found):`);
   staff.forEach((s) => {
