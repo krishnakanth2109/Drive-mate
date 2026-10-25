@@ -12,16 +12,36 @@ const adapter = connectionString
   ? new PrismaNeon({ connectionString })
   : undefined;
 
-const globalForPrisma = globalThis as unknown as {
-  prisma?: PrismaClient;
+/**
+ * Extended Prisma Client type that explicitly guarantees all multi-role model delegates
+ * exist for IDE language servers, build workers, and runtime execution.
+ */
+export type ExtendedPrismaClient = PrismaClient & {
+  supportTicket: any;
+  ticketMessage: any;
+  supportEscalation: any;
+  driverOnboarding: any;
+  vehicleInspection: any;
+  fleetZone: any;
+  cityZone: any;
+  surgeRule: any;
+  driverIncentiveBroadcast: any;
+  payoutBatch: any;
+  disbursement: any;
+  refundVoucher: any;
+  [key: string]: any;
 };
 
-export const prisma =
+const globalForPrisma = globalThis as unknown as {
+  prisma?: ExtendedPrismaClient;
+};
+
+export const prisma: ExtendedPrismaClient =
   globalForPrisma.prisma ??
-  new PrismaClient({
+  (new PrismaClient({
     ...(adapter ? { adapter } : {}),
     log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
-  });
+  }) as ExtendedPrismaClient);
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
