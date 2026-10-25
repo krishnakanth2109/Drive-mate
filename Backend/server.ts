@@ -13,6 +13,10 @@ import profileRoutes from './routes/profileRoutes.js';
 import rbacRoutes from './routes/rbacRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import riderRoutes from './routes/riderRoutes.js';
+import supportRoutes from './routes/supportRoutes.js';
+import fleetRoutes from './routes/fleetRoutes.js';
+import operationsRoutes from './routes/operationsRoutes.js';
+import financeRoutes from './routes/financeRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 dotenv.config();
@@ -55,6 +59,10 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/rbac', rbacRoutes);
 app.use('/api/payment', paymentRoutes);
+app.use('/api/support', supportRoutes);
+app.use('/api/fleet', fleetRoutes);
+app.use('/api/operations', operationsRoutes);
+app.use('/api/finance', financeRoutes);
 
 app.get('/api/config/maps-key', (req: Request, res: Response) => {
   res.json({ key: process.env.GOOGLE_MAPS_API_KEY || '' });

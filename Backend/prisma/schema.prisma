@@ -6,6 +6,10 @@ datasource db {
   provider = "postgresql"
 }
 
+// =========================================================================
+// CUSTOMER & PASSENGER MODEL
+// =========================================================================
+
 model Customer {
   id                  String          @id
   name                String
@@ -27,71 +31,88 @@ model Customer {
   paymentMethods      PaymentMethod[]
   rewards             Reward[]
   transactions        Transaction[]
+  refundVouchers      RefundVoucher[]
 
   @@map("customers")
 }
 
-model Rider {
-  id               String    @id
-  name             String
-  email            String    @unique
-  phone            String
-  password         String
-  role             String    @default("rider")
-  isAvailable      Boolean   @default(false) @map("is_available")
-  vehicleType      String    @default("bike") @map("vehicle_type")
-  currentLng       Float?    @map("current_lng")
-  currentLat       Float?    @map("current_lat")
-  heading          Float     @default(0)
-  vehicle          Json?
-  walletBalance    Decimal   @default(3450.00) @map("wallet_balance") @db.Decimal(12, 2)
-  rating           Decimal   @default(4.90) @db.Decimal(3, 2)
-  totalRides       Int       @default(24) @map("total_rides")
-  totalEarnings    Decimal   @default(3450.00) @map("total_earnings") @db.Decimal(12, 2)
-  loyaltyPoints    Int       @default(350) @map("loyalty_points")
-  referralCode     String    @default("ALEX2025") @map("referral_code")
-  documents        Json?
-  preferences      Json?
-  resetOtp         String?   @map("reset_otp")
-  resetOtpExpires  DateTime? @map("reset_otp_expires")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
+// =========================================================================
+// RIDER & FLEET OPERATOR MODEL
+// =========================================================================
 
-  rides            Ride[]    @relation("RiderRides")
+model Rider {
+  id                  String               @id
+  name                String
+  email               String               @unique
+  phone               String
+  password            String
+  role                String               @default("rider")
+  isAvailable         Boolean              @default(false) @map("is_available")
+  vehicleType         String               @default("bike") @map("vehicle_type")
+  currentLng          Float?               @map("current_lng")
+  currentLat          Float?               @map("current_lat")
+  heading             Float                @default(0)
+  vehicle             Json?
+  walletBalance       Decimal              @default(3450.00) @map("wallet_balance") @db.Decimal(12, 2)
+  rating              Decimal              @default(4.90) @db.Decimal(3, 2)
+  totalRides          Int                  @default(24) @map("total_rides")
+  totalEarnings       Decimal              @default(3450.00) @map("total_earnings") @db.Decimal(12, 2)
+  loyaltyPoints       Int                  @default(350) @map("loyalty_points")
+  referralCode        String               @default("ALEX2025") @map("referral_code")
+  documents           Json?
+  preferences         Json?
+  resetOtp            String?              @map("reset_otp")
+  resetOtpExpires     DateTime?            @map("reset_otp_expires")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+
+  rides               Ride[]               @relation("RiderRides")
+  onboardingProfile   DriverOnboarding?
+  vehicleInspections  VehicleInspection[]
+  disbursements       Disbursement[]
 
   @@map("riders")
 }
 
+// =========================================================================
+// RIDE MODEL
+// =========================================================================
+
 model Ride {
-  id                 String    @id
-  customerId         String?   @map("customer_id")
-  riderId            String?   @map("rider_id")
-  pickupAddress      String?   @map("pickup_address")
-  pickupLat          Float?    @map("pickup_lat")
-  pickupLng          Float?    @map("pickup_lng")
-  dropAddress        String?   @map("drop_address")
-  dropLat            Float?    @map("drop_lat")
-  dropLng            Float?    @map("drop_lng")
-  status             String    @default("pending")
-  vehicleType        String    @default("bike") @map("vehicle_type")
-  fare               Decimal   @db.Decimal(10, 2)
+  id                 String          @id
+  customerId         String?         @map("customer_id")
+  riderId            String?         @map("rider_id")
+  pickupAddress      String?         @map("pickup_address")
+  pickupLat          Float?          @map("pickup_lat")
+  pickupLng          Float?          @map("pickup_lng")
+  dropAddress        String?         @map("drop_address")
+  dropLat            Float?          @map("drop_lat")
+  dropLng            Float?          @map("drop_lng")
+  status             String          @default("pending")
+  vehicleType        String          @default("bike") @map("vehicle_type")
+  fare               Decimal         @db.Decimal(10, 2)
   distance           Float?
   duration           Float?
   polyline           String?
   otp                String?
-  arrivedAt          DateTime? @map("arrived_at")
-  waitCharges        Decimal   @default(0.00) @map("wait_charges") @db.Decimal(10, 2)
-  cancellationReason String?   @map("cancellation_reason")
-  cancelledBy        String?   @map("cancelled_by")
-  createdAt          DateTime  @default(now()) @map("created_at")
-  updatedAt          DateTime  @updatedAt @map("updated_at")
+  arrivedAt          DateTime?       @map("arrived_at")
+  waitCharges        Decimal         @default(0.00) @map("wait_charges") @db.Decimal(10, 2)
+  cancellationReason String?         @map("cancellation_reason")
+  cancelledBy        String?         @map("cancelled_by")
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
 
-  customer           Customer? @relation("CustomerRides", fields: [customerId], references: [id])
-  rider              Rider?    @relation("RiderRides", fields: [riderId], references: [id])
+  customer           Customer?       @relation("CustomerRides", fields: [customerId], references: [id])
+  rider              Rider?          @relation("RiderRides", fields: [riderId], references: [id])
   claims             Claim[]
+  supportTickets     SupportTicket[]
 
   @@map("rides")
 }
+
+// =========================================================================
+// ROLES & RBAC MODEL
+// =========================================================================
 
 model Role {
   id          String      @id
@@ -112,18 +133,35 @@ model Role {
   @@map("roles")
 }
 
-model Admin {
-  id            String      @id
-  name          String
-  email         String      @unique
-  password      String
-  isActive      Boolean     @default(true) @map("is_active")
-  createdAt     DateTime    @default(now()) @map("created_at")
-  updatedAt     DateTime    @updatedAt @map("updated_at")
+// =========================================================================
+// ADMIN & STAFF USER MODEL
+// =========================================================================
 
-  adminRoles    AdminRole[]
-  initiatedLogs AuditLog[]  @relation("AdminInitiator")
-  targetedLogs  AuditLog[]  @relation("AdminTarget")
+model Admin {
+  id                         String                    @id
+  name                       String
+  email                      String                    @unique
+  password                   String
+  role                       String                    @default("admin")
+  isActive                   Boolean                   @default(true) @map("is_active")
+  createdAt                  DateTime                  @default(now()) @map("created_at")
+  updatedAt                  DateTime                  @updatedAt @map("updated_at")
+
+  adminRoles                 AdminRole[]
+  initiatedLogs              AuditLog[]                @relation("AdminInitiator")
+  targetedLogs               AuditLog[]                @relation("AdminTarget")
+
+  // Role-specific assignments
+  assignedTickets            SupportTicket[]           @relation("AssignedAgent")
+  escalationsInitiated       SupportEscalation[]       @relation("EscalatedByAgent")
+  escalationsReviewed        SupportEscalation[]       @relation("ReviewedBySupervisor")
+  coachedDrivers             DriverOnboarding[]        @relation("AssignedFleetCoach")
+  inspectedVehicles          VehicleInspection[]       @relation("InspectingCoach")
+  surgeRules                 SurgeRule[]               @relation("ManagerSurgeRules")
+  incentiveBroadcasts        DriverIncentiveBroadcast[] @relation("ManagerBroadcasts")
+  authorizedPayoutBatches    PayoutBatch[]             @relation("AuthorizedPayoutBatches")
+  executedDisbursements      Disbursement[]            @relation("ExecutedDisbursements")
+  authorizedRefundVouchers   RefundVoucher[]           @relation("AuthorizedRefunds")
 
   @@map("admins")
 }
@@ -158,16 +196,271 @@ model AuditLog {
   @@map("audit_logs")
 }
 
-model Claim {
+// =========================================================================
+// ROLE 1 & 2: SUPPORT AGENT & HEAD OF SUPPORT MODELS
+// =========================================================================
+
+model SupportTicket {
+  id                String             @id
+  ticketNumber      String             @unique @map("ticket_number")
+  userId            String?            @map("user_id")
+  userType          String             @default("Customer") @map("user_type")
+  userName          String             @map("user_name")
+  userPhone         String             @map("user_phone")
+  rideId            String?            @map("ride_id")
+  category          String
+  subject           String
+  details           String
+  priority          String             @default("medium") // low, medium, high, urgent
+  status            String             @default("open")   // open, in_progress, escalated, resolved, closed
+  assignedAgentId   String?            @map("assigned_agent_id")
+  resolutionNote    String?            @map("resolution_note")
+  refundAmount      Decimal?           @map("refund_amount") @db.Decimal(10, 2)
+  resolvedAt        DateTime?          @map("resolved_at")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  assignedAgent     Admin?             @relation("AssignedAgent", fields: [assignedAgentId], references: [id], onDelete: SetNull)
+  ride              Ride?              @relation(fields: [rideId], references: [id], onDelete: SetNull)
+  messages          TicketMessage[]
+  escalation        SupportEscalation?
+
+  @@map("support_tickets")
+}
+
+model TicketMessage {
+  id         String        @id
+  ticketId   String        @map("ticket_id")
+  senderId   String        @map("sender_id")
+  senderName String        @map("sender_name")
+  senderType String        @map("sender_type") // Agent, Customer, Rider, Supervisor
+  message    String
+  createdAt  DateTime      @default(now()) @map("created_at")
+
+  ticket     SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@map("ticket_messages")
+}
+
+model SupportEscalation {
+  id               String        @id
+  ticketId         String        @unique @map("ticket_id")
+  escalatedById    String        @map("escalated_by_id")
+  reviewedById     String?       @map("reviewed_by_id")
+  requestedAction  String        @map("requested_action")
+  supervisorNotes  String?       @map("supervisor_notes")
+  status           String        @default("pending_review") // pending_review, approved, dismissed
+  approvedRefund   Decimal?      @map("approved_refund") @db.Decimal(10, 2)
+  driverPenalty    Decimal?      @map("driver_penalty") @db.Decimal(10, 2)
+  resolvedAt       DateTime?     @map("resolved_at")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+
+  ticket           SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  escalatedBy      Admin         @relation("EscalatedByAgent", fields: [escalatedById], references: [id])
+  reviewedBy       Admin?        @relation("ReviewedBySupervisor", fields: [reviewedById], references: [id])
+
+  @@map("support_escalations")
+}
+
+// =========================================================================
+// ROLE 4 & 5: FLEET COACH & HEAD OF FLEET COACH MODELS
+// =========================================================================
+
+model DriverOnboarding {
+  id                       String              @id
+  driverId                 String              @unique @map("driver_id")
+  coachId                  String?             @map("coach_id")
+  dlStatus                 String              @default("Pending") @map("dl_status") // Approved, Pending, Required
+  rcStatus                 String              @default("Pending") @map("rc_status")
+  aadharStatus             String              @default("Pending") @map("aadhar_status")
+  policeVerificationStatus String              @default("Required") @map("police_verification_status")
+  trainingStatus           String              @default("Not Started") @map("training_status") // Not Started, Module 1/4, Module 2/4, Module 3/4, Completed (100%)
+  trainingScore            Int?                @default(0) @map("training_score")
+  overallStatus            String              @default("pending_review") @map("overall_status") // pending_review, in_progress, approved, rejected
+  coachNotes               String?             @map("coach_notes")
+  approvedAt               DateTime?           @map("approved_at")
+  createdAt                DateTime            @default(now()) @map("created_at")
+  updatedAt                DateTime            @updatedAt @map("updated_at")
+
+  driver                   Rider               @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  coach                    Admin?              @relation("AssignedFleetCoach", fields: [coachId], references: [id], onDelete: SetNull)
+  inspections              VehicleInspection[]
+
+  @@map("driver_onboardings")
+}
+
+model VehicleInspection {
+  id               String            @id
+  onboardingId     String?           @map("onboarding_id")
+  riderId          String            @map("rider_id")
+  inspectorId      String            @map("inspector_id")
+  vehiclePlate     String            @map("vehicle_plate")
+  vehicleModel     String            @map("vehicle_model")
+  vehicleType      String            @map("vehicle_type")
+  odometerReading  Int?              @map("odometer_reading")
+  brakesCondition  String            @default("Pass") @map("brakes_condition")
+  tiresCondition   String            @default("Pass") @map("tires_condition")
+  lightsCondition  String            @default("Pass") @map("lights_condition")
+  insuranceValid   Boolean           @default(true) @map("insurance_valid")
+  pollutionValid   Boolean           @default(true) @map("pollution_valid")
+  inspectionPass   Boolean           @default(true) @map("inspection_pass")
+  notes            String?
+  inspectedAt      DateTime          @default(now()) @map("inspected_at")
+
+  onboarding       DriverOnboarding? @relation(fields: [onboardingId], references: [id], onDelete: SetNull)
+  rider            Rider             @relation(fields: [riderId], references: [id], onDelete: Cascade)
+  inspector        Admin             @relation("InspectingCoach", fields: [inspectorId], references: [id])
+
+  @@map("vehicle_inspections")
+}
+
+model FleetZone {
+  id              String   @id
+  name            String   @unique
+  city            String   @default("Bangalore")
+  targetDrivers   Int      @default(100) @map("target_drivers")
+  activeDrivers   Int      @default(0) @map("active_drivers")
+  complianceRate  Decimal  @default(98.0) @map("compliance_rate") @db.Decimal(5, 2)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("fleet_zones")
+}
+
+// =========================================================================
+// ROLE 6: OPERATIONS MANAGER MODELS
+// =========================================================================
+
+model CityZone {
+  id               String      @id
+  name             String      @unique
+  city             String      @default("Bangalore")
+  demandLevel      String      @default("Moderate") @map("demand_level") // Low, Moderate, High, Extreme
+  activeDrivers    Int         @default(0) @map("active_drivers")
+  pendingRiders    Int         @default(0) @map("pending_riders")
+  surgeMultiplier  Decimal     @default(1.0) @map("surge_multiplier") @db.Decimal(3, 1)
+  status           String      @default("normal") // normal, surge_active
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+
+  surgeRules       SurgeRule[]
+
+  @@map("city_zones")
+}
+
+model SurgeRule {
+  id          String    @id
+  zoneId      String    @map("zone_id")
+  managerId   String    @map("manager_id")
+  multiplier  Decimal   @db.Decimal(3, 1)
+  reason      String
+  isActive    Boolean   @default(true) @map("is_active")
+  startTime   DateTime  @default(now()) @map("start_time")
+  endTime     DateTime? @map("end_time")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  zone        CityZone  @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  manager     Admin     @relation("ManagerSurgeRules", fields: [managerId], references: [id])
+
+  @@map("surge_rules")
+}
+
+model DriverIncentiveBroadcast {
   id          String   @id
-  userId      String   @map("user_id")
-  userModel   String   @default("Customer") @map("user_model")
-  rideId      String?  @map("ride_id")
+  managerId   String   @map("manager_id")
+  title       String
+  bonusAmount Decimal  @map("bonus_amount") @db.Decimal(10, 2)
+  targetZone  String?  @map("target_zone")
+  message     String
+  status      String   @default("active")
+  expiresAt   DateTime @map("expires_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  manager     Admin    @relation("ManagerBroadcasts", fields: [managerId], references: [id])
+
+  @@map("driver_incentive_broadcasts")
+}
+
+// =========================================================================
+// ROLE 7 & 8: FINANCE ADMIN & FINANCERS MODELS
+// =========================================================================
+
+model PayoutBatch {
+  id                String         @id
+  batchReference    String         @unique @map("batch_reference") // e.g. BATCH-2026-W42
+  disbursementDate  DateTime       @map("disbursement_date")
+  totalAmount       Decimal        @map("total_amount") @db.Decimal(12, 2)
+  driverCount       Int            @map("driver_count")
+  gatewayFee        Decimal        @default(0.00) @map("gateway_fee") @db.Decimal(10, 2)
+  status            String         @default("pending_authorization") // pending_authorization, approved, processing, completed
+  authorizedById    String?        @map("authorized_by_id")
+  authorizedAt      DateTime?      @map("authorized_at")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  authorizedBy      Admin?         @relation("AuthorizedPayoutBatches", fields: [authorizedById], references: [id], onDelete: SetNull)
+  disbursements     Disbursement[]
+
+  @@map("payout_batches")
+}
+
+model Disbursement {
+  id            String       @id
+  payoutRef     String       @unique @map("payout_ref") // e.g. PAY-901
+  batchId       String?      @map("batch_id")
+  riderId       String       @map("rider_id")
+  driverName    String       @map("driver_name")
+  driverPhone   String       @map("driver_phone")
+  amount        Decimal      @db.Decimal(12, 2)
+  bankName      String       @map("bank_name")
+  ifscCode      String       @map("ifsc_code")
+  accountNumber String       @map("account_number")
+  method        String       @default("IMPS")
+  status        String       @default("pending") // pending, approved, processing, completed, failed
+  failureReason String?      @map("failure_reason")
+  executedById  String?      @map("executed_by_id")
+  executedAt    DateTime?    @map("executed_at")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  batch         PayoutBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  rider         Rider        @relation(fields: [riderId], references: [id], onDelete: Cascade)
+  executedBy    Admin?       @relation("ExecutedDisbursements", fields: [executedById], references: [id], onDelete: SetNull)
+
+  @@map("disbursements")
+}
+
+model RefundVoucher {
+  id             String    @id
+  customerId     String    @map("customer_id")
+  ticketId       String?   @map("ticket_id")
+  amount         Decimal   @db.Decimal(10, 2)
+  reason         String
+  status         String    @default("issued") // issued, claimed, expired
+  authorizedById String    @map("authorized_by_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  customer       Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  authorizedBy   Admin     @relation("AuthorizedRefunds", fields: [authorizedById], references: [id])
+
+  @@map("refund_vouchers")
+}
+
+// =========================================================================
+// LEGACY COMPATIBILITY MODELS (Claims, Notifications, Payments, Rewards)
+// =========================================================================
+
+model Claim {
+  id          String    @id
+  userId      String    @map("user_id")
+  userModel   String    @default("Customer") @map("user_model")
+  rideId      String?   @map("ride_id")
   type        String
   description String
-  status      String   @default("open")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  status      String    @default("open")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
   customer    Customer? @relation(fields: [userId], references: [id], onDelete: Cascade)
   ride        Ride?     @relation(fields: [rideId], references: [id], onDelete: SetNull)
@@ -176,15 +469,15 @@ model Claim {
 }
 
 model Notification {
-  id        String   @id
-  userId    String   @map("user_id")
-  userModel String   @default("Customer") @map("user_model")
+  id        String    @id
+  userId    String    @map("user_id")
+  userModel String    @default("Customer") @map("user_model")
   title     String
   body      String
-  type      String   @default("system")
-  isRead    Boolean  @default(false) @map("is_read")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  type      String    @default("system")
+  isRead    Boolean   @default(false) @map("is_read")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
 
   customer  Customer? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -192,17 +485,17 @@ model Notification {
 }
 
 model PaymentMethod {
-  id            String   @id
-  userId        String   @map("user_id")
-  userModel     String   @default("Customer") @map("user_model")
+  id            String    @id
+  userId        String    @map("user_id")
+  userModel     String    @default("Customer") @map("user_model")
   type          String
   provider      String
   last4         String?
-  accountNumber String?  @map("account_number")
-  ifscOrRouting String?  @map("ifsc_or_routing")
-  isDefault     Boolean  @default(false) @map("is_default")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  accountNumber String?   @map("account_number")
+  ifscOrRouting String?   @map("ifsc_or_routing")
+  isDefault     Boolean   @default(false) @map("is_default")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   customer      Customer? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -210,22 +503,22 @@ model PaymentMethod {
 }
 
 model Reward {
-  id            String   @id
-  userId        String   @map("user_id")
-  userModel     String   @default("Customer") @map("user_model")
+  id            String    @id
+  userId        String    @map("user_id")
+  userModel     String    @default("Customer") @map("user_model")
   type          String
   title         String
-  description   String?  @default("")
+  description   String?   @default("")
   code          String?
-  discountValue Decimal  @default(0.00) @map("discount_value") @db.Decimal(10, 2)
-  progress      Decimal  @default(0.00) @db.Decimal(10, 2)
-  target        Decimal  @default(0.00) @db.Decimal(10, 2)
-  rewardAmount  Decimal  @default(0.00) @map("reward_amount") @db.Decimal(10, 2)
-  validUntil    DateTime @map("valid_until")
-  isLocked      Boolean  @default(false) @map("is_locked")
-  isUsed        Boolean  @default(false) @map("is_used")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  discountValue Decimal   @default(0.00) @map("discount_value") @db.Decimal(10, 2)
+  progress      Decimal   @default(0.00) @db.Decimal(10, 2)
+  target        Decimal   @default(0.00) @db.Decimal(10, 2)
+  rewardAmount  Decimal   @default(0.00) @map("reward_amount") @db.Decimal(10, 2)
+  validUntil    DateTime  @map("valid_until")
+  isLocked      Boolean   @default(false) @map("is_locked")
+  isUsed        Boolean   @default(false) @map("is_used")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   customer      Customer? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -233,16 +526,16 @@ model Reward {
 }
 
 model Transaction {
-  id          String   @id
-  userId      String   @map("user_id")
-  userModel   String   @default("Customer") @map("user_model")
+  id          String    @id
+  userId      String    @map("user_id")
+  userModel   String    @default("Customer") @map("user_model")
   type        String
-  amount      Decimal  @db.Decimal(12, 2)
-  currency    String   @default("INR")
+  amount      Decimal   @db.Decimal(12, 2)
+  currency    String    @default("INR")
   description String
-  referenceId String?  @map("reference_id")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  referenceId String?   @map("reference_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
   customer    Customer? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
