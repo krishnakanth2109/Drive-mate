@@ -32,6 +32,7 @@ model Customer {
   rewards             Reward[]
   transactions        Transaction[]
   refundVouchers      RefundVoucher[]
+  wallet              Wallet?
 
   @@map("customers")
 }
@@ -70,6 +71,8 @@ model Rider {
   onboardingProfile   DriverOnboarding?
   vehicleInspections  VehicleInspection[]
   disbursements       Disbursement[]
+  wallet              Wallet?
+  settlementItems     SettlementItem[]
 
   @@map("riders")
 }
@@ -82,23 +85,30 @@ model Ride {
   id                 String          @id
   customerId         String?         @map("customer_id")
   riderId            String?         @map("rider_id")
+  pickupPlaceName    String?         @map("pickup_place_name")
   pickupAddress      String?         @map("pickup_address")
   pickupLat          Float?          @map("pickup_lat")
   pickupLng          Float?          @map("pickup_lng")
+  dropPlaceName      String?         @map("drop_place_name")
   dropAddress        String?         @map("drop_address")
   dropLat            Float?          @map("drop_lat")
   dropLng            Float?          @map("drop_lng")
   status             String          @default("pending")
   vehicleType        String          @default("bike") @map("vehicle_type")
   fare               Decimal         @db.Decimal(10, 2)
+  currency           String          @default("INR")
   distance           Float?
   duration           Float?
   polyline           String?
   otp                String?
   arrivedAt          DateTime?       @map("arrived_at")
+  acceptedAt         DateTime?       @map("accepted_at")
+  startedAt          DateTime?       @map("started_at")
+  completedAt        DateTime?       @map("completed_at")
   waitCharges        Decimal         @default(0.00) @map("wait_charges") @db.Decimal(10, 2)
   cancellationReason String?         @map("cancellation_reason")
   cancelledBy        String?         @map("cancelled_by")
+  idempotencyKey     String?         @map("idempotency_key")
   createdAt          DateTime        @default(now()) @map("created_at")
   updatedAt          DateTime        @updatedAt @map("updated_at")
 
@@ -107,6 +117,11 @@ model Ride {
   claims             Claim[]
   supportTickets     SupportTicket[]
 
+  @@index([customerId])
+  @@index([riderId])
+  @@index([status])
+  @@index([idempotencyKey])
+  @@index([createdAt])
   @@map("rides")
 }
 
@@ -162,6 +177,7 @@ model Admin {
   authorizedPayoutBatches    PayoutBatch[]             @relation("AuthorizedPayoutBatches")
   executedDisbursements      Disbursement[]            @relation("ExecutedDisbursements")
   authorizedRefundVouchers   RefundVoucher[]           @relation("AuthorizedRefunds")
+  authorizedSettlementBatches SettlementBatch[]        @relation("AuthorizedSettlementBatches")
 
   @@map("admins")
 }
@@ -541,3 +557,156 @@ model Transaction {
 
   @@map("transactions")
 }
+
+// =========================================================================
+// RIDER & DRIVER WALLET, TRANSACTION LEDGER, AND RAZORPAY ORDERS
+// =========================================================================
+
+model Wallet {
+  id            String              @id
+  userId        String              @map("user_id")
+  userType      String              @default("customer") @map("user_type") // "customer" | "rider"
+  currency      String              @default("INR")
+  balance       Decimal             @default(0.00) @db.Decimal(12, 2)
+  lockedBalance Decimal             @default(0.00) @map("locked_balance") @db.Decimal(12, 2)
+  status        String              @default("active") // active, suspended, frozen
+  customerId    String?             @unique @map("customer_id")
+  riderId       String?             @unique @map("rider_id")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+
+  customer      Customer?           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  rider         Rider?              @relation(fields: [riderId], references: [id], onDelete: Cascade)
+  transactions  WalletTransaction[]
+  paymentOrders PaymentOrder[]
+
+  @@unique([userId, userType])
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id             String    @id
+  walletId       String    @map("wallet_id")
+  type           String    // TOPUP, RIDE_FARE, REFUND, CASHBACK, PENALTY, SETTLEMENT_PAYOUT
+  amount         Decimal   @db.Decimal(12, 2)
+  direction      String    // CREDIT, DEBIT
+  balanceBefore  Decimal   @map("balance_before") @db.Decimal(12, 2)
+  balanceAfter   Decimal   @map("balance_after") @db.Decimal(12, 2)
+  currency       String    @default("INR")
+  status         String    @default("SUCCESS") // SUCCESS, PENDING, FAILED, REVERSED
+  referenceId    String?   @map("reference_id") // order_id, ride_id, voucher_id, batch_id
+  referenceType  String?   @map("reference_type") // PAYMENT_ORDER, RIDE, REFUND_VOUCHER, SETTLEMENT_ITEM
+  description    String
+  metadata       Json?
+  failureReason  String?   @map("failure_reason")
+  idempotencyKey String?   @unique @map("idempotency_key")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  wallet         Wallet    @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([walletId, createdAt])
+  @@index([referenceId])
+  @@map("wallet_transactions")
+}
+
+model PaymentOrder {
+  id                String    @id
+  walletId          String    @map("wallet_id")
+  userId            String    @map("user_id")
+  userType          String    @default("customer") @map("user_type")
+  orderId           String    @unique @map("order_id") // Razorpay order_id (e.g. order_xxx)
+  amount            Decimal   @db.Decimal(12, 2) // In INR
+  amountPaise       Int       @map("amount_paise") // In paise
+  currency          String    @default("INR")
+  status            String    @default("created") // created, attempted, paid, failed, cancelled
+  receipt           String    @unique
+  razorpayPaymentId String?   @unique @map("razorpay_payment_id")
+  razorpaySignature String?   @map("razorpay_signature")
+  idempotencyKey    String?   @unique @map("idempotency_key")
+  errorCode         String?   @map("error_code")
+  errorDescription  String?   @map("error_description")
+  verifiedAt        DateTime? @map("verified_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  wallet            Wallet    @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@map("payment_orders")
+}
+
+// =========================================================================
+// AUTOMATED WEEKLY SETTLEMENT & RECONCILIATION MODELS
+// =========================================================================
+
+model SettlementBatch {
+  id               String           @id
+  batchReference   String           @unique @map("batch_reference") // e.g. SETTLE-2026-W43
+  periodStart      DateTime         @map("period_start")
+  periodEnd        DateTime         @map("period_end")
+  periodTimezone   String           @default("Asia/Kolkata") @map("period_timezone")
+  settlementType   String           @default("DRIVER_EARNINGS") @map("settlement_type") // DRIVER_EARNINGS, PLATFORM_RECONCILIATION
+  totalRides       Int              @default(0) @map("total_rides")
+  grossFare        Decimal          @default(0.00) @map("gross_fare") @db.Decimal(12, 2)
+  platformFee      Decimal          @default(0.00) @map("platform_fee") @db.Decimal(12, 2)
+  netPayable       Decimal          @default(0.00) @map("net_payable") @db.Decimal(12, 2)
+  beneficiaryCount Int              @default(0) @map("beneficiary_count")
+  status           String           @default("CALCULATED") // CALCULATED, PENDING_APPROVAL, APPROVED, PROCESSING, COMPLETED, FAILED
+  isDryRun         Boolean          @default(true) @map("is_dry_run")
+  calculatedAt     DateTime         @default(now()) @map("calculated_at")
+  authorizedById   String?          @map("authorized_by_id")
+  authorizedAt     DateTime?        @map("authorized_at")
+  executedAt       DateTime?        @map("executed_at")
+  failureReason    String?          @map("failure_reason")
+  metadata         Json?
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  authorizedBy     Admin?           @relation("AuthorizedSettlementBatches", fields: [authorizedById], references: [id], onDelete: SetNull)
+  items            SettlementItem[]
+
+  @@map("settlement_batches")
+}
+
+model SettlementItem {
+  id                String          @id
+  batchId           String          @map("batch_id")
+  beneficiaryId     String          @map("beneficiary_id") // Rider / Driver ID
+  beneficiaryName   String          @map("beneficiary_name")
+  beneficiaryPhone  String          @map("beneficiary_phone")
+  bankAccountNumber String?         @map("bank_account_number")
+  ifscCode          String?         @map("ifsc_code")
+  rideCount         Int             @default(0) @map("ride_count")
+  grossAmount       Decimal         @map("gross_amount") @db.Decimal(12, 2)
+  deductions        Decimal         @default(0.00) @db.Decimal(12, 2)
+  incentives        Decimal         @default(0.00) @db.Decimal(12, 2)
+  netAmount         Decimal         @map("net_amount") @db.Decimal(12, 2)
+  status            String          @default("PENDING") // PENDING, HELD, APPROVED, PROCESSING, SUCCESS, FAILED
+  payoutRef         String?         @unique @map("payout_ref")
+  failureReason     String?         @map("failure_reason")
+  processedAt       DateTime?       @map("processed_at")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  batch             SettlementBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  rider             Rider           @relation(fields: [beneficiaryId], references: [id], onDelete: Cascade)
+
+  @@unique([batchId, beneficiaryId])
+  @@map("settlement_items")
+}
+
+model IdempotencyRecord {
+  id           String   @id
+  key          String   @unique
+  endpoint     String
+  requestHash  String?  @map("request_hash")
+  responseCode Int      @map("response_code")
+  responseBody Json     @map("response_body")
+  createdAt    DateTime @default(now()) @map("created_at")
+  expiresAt    DateTime @map("expires_at")
+
+  @@index([key, expiresAt])
+  @@map("idempotency_records")
+}
+

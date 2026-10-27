@@ -3,6 +3,7 @@ import { createDrawerNavigator } from '@react-navigation/drawer';
 import { Ionicons } from '@expo/vector-icons';
 
 import MainTabsNavigator from './MainTabsNavigator';
+import WalletScreen from '../../features/profile/screens/WalletScreen';
 import PaymentScreen from '../../features/payments/screens/PaymentScreen';
 import NotificationsScreen from '../../features/notifications/screens/NotificationsScreen';
 import HelpScreen from '../../features/support/screens/HelpScreen';
@@ -36,6 +37,18 @@ export default function MainDrawerNavigator() {
           drawerLabel: 'Home',
           drawerIcon: ({ color, size }) => (
             <Ionicons name="home-outline" size={size} color={color} />
+          )
+        }}
+      />
+      <Drawer.Screen 
+        name="DrawerWallet" 
+        component={WalletScreen} 
+        options={{
+          headerShown: false,
+          title: 'My Wallet',
+          drawerLabel: 'My Wallet',
+          drawerIcon: ({ color, size }) => (
+            <Ionicons name="wallet-outline" size={size} color={color} />
           )
         }}
       />

@@ -29,6 +29,12 @@ export type ExtendedPrismaClient = PrismaClient & {
   payoutBatch: any;
   disbursement: any;
   refundVoucher: any;
+  wallet: any;
+  walletTransaction: any;
+  paymentOrder: any;
+  settlementBatch: any;
+  settlementItem: any;
+  idempotencyRecord: any;
   [key: string]: any;
 };
 

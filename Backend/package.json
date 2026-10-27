@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
+    "prestart": "tsc",
     "start": "node dist/server.js",
     "dev": "tsx watch server.ts",
     "type-check": "tsc --noEmit",
@@ -16,6 +17,7 @@
   "dependencies": {
     "@prisma/adapter-neon": "^7.10.1",
     "@prisma/client": "^7.10.1",
+    "@types/node-cron": "^3.0.11",
     "axios": "^1.6.8",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
@@ -23,6 +25,7 @@
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.2.3",
+    "node-cron": "^4.6.0",
     "pg": "^8.23.1",
     "razorpay": "^2.9.8",
     "redis": "^6.2.1",

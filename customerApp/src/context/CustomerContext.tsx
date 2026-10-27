@@ -14,7 +14,7 @@ import { api, socket, connectSocket } from '../services/api';
 // ─────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────
-type AppState =
+export type AppState =
   | 'IDLE'
   | 'ESTIMATING'
   | 'SEARCHING'
@@ -22,19 +22,19 @@ type AppState =
   | 'ONGOING'
   | 'COMPLETED';
 
-interface LocationRegion {
+export interface LocationRegion {
   latitude: number;
   longitude: number;
   latitudeDelta: number;
   longitudeDelta: number;
 }
 
-interface DriverLocation {
+export interface DriverLocation {
   latitude: number;
   longitude: number;
 }
 
-interface FareOption {
+export interface FareOption {
   type: string;
   label: string;
   emoji: string;
@@ -43,44 +43,71 @@ interface FareOption {
   eta: number;
 }
 
-interface Estimate {
-  pickup: { lat: number; lng: number; address: string };
-  drop: { lat: number; lng: number; address: string };
+export interface RouteCoordinate {
+  latitude: number;
+  longitude: number;
+}
+
+export interface Estimate {
+  pickup: { lat: number; lng: number; address: string; name?: string };
+  drop: { lat: number; lng: number; address: string; name?: string };
   distance: number;
   duration: number;
   polyline: string;
+  coordinates?: RouteCoordinate[];
   fareOptions: FareOption[];
 }
 
-interface Driver {
+export interface Driver {
   name: string;
   phone: string;
   vehicle: string;
   vehicleType: string;
 }
 
-interface ActiveRide {
+export interface ActiveRide {
   _id: string;
+  id?: string;
   otp: string;
   fare: number;
   status: string;
-  pickup: { address: string; lat: number; lng: number };
-  drop: { address: string; lat: number; lng: number };
+  pickup: { address: string; lat: number; lng: number; name?: string };
+  drop: { address: string; lat: number; lng: number; name?: string };
+}
+
+export interface AutocompleteItem {
+  placeId: string;
+  mainText: string;
+  secondaryText: string;
+  fullText: string;
+}
+
+export interface PlaceDetails {
+  name?: string;
+  address: string;
+  lat: number;
+  lng: number;
 }
 
 interface CustomerContextType {
   appState: AppState;
   userLocation: LocationRegion | null;
+  currentAddress: string | null;
+  locationPermissionGranted: boolean | null;
+  isLocating: boolean;
   estimate: Estimate | null;
   driver: Driver | null;
   activeRide: ActiveRide | null;
   driverLocation: DriverLocation | null;
   availableDrivers: { [id: string]: { lat: number; lng: number; heading: number; vehicleType: string } };
   googleMapsKey: string | null;
+  requestCurrentLocation: () => Promise<void>;
+  searchPlaces: (query: string, bias?: { lat: number; lng: number }) => Promise<AutocompleteItem[]>;
+  getPlaceDetails: (placeId: string) => Promise<PlaceDetails | null>;
   fetchEstimate: (
-    pickup: string | { lat: number; lng: number },
-    drop: string | { lat: number; lng: number }
-  ) => Promise<void>;
+    pickup: string | { lat: number; lng: number; address?: string; name?: string },
+    drop: string | { lat: number; lng: number; address?: string; name?: string }
+  ) => Promise<Estimate | null>;
   requestRide: (vehicleType: string) => Promise<void>;
   cancelRide: () => Promise<void>;
   resetFlow: () => void;
@@ -106,6 +133,9 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const [appState, setAppState] = useState<AppState>('IDLE');
   const [userLocation, setUserLocation] = useState<LocationRegion | null>(null);
+  const [currentAddress, setCurrentAddress] = useState<string | null>(null);
+  const [locationPermissionGranted, setLocationPermissionGranted] = useState<boolean | null>(null);
+  const [isLocating, setIsLocating] = useState<boolean>(false);
   const [estimate, setEstimate] = useState<Estimate | null>(null);
   const [driver, setDriver] = useState<Driver | null>(null);
   const [activeRide, setActiveRide] = useState<ActiveRide | null>(null);
@@ -115,48 +145,77 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const activeRideIdRef = useRef<string | null>(null);
 
-  // ── Get GPS location on mount ──────────────
-  useEffect(() => {
-    (async () => {
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
-          console.warn('Location permission denied — using fallback');
-          setUserLocation({
-            latitude: 17.385,
-            longitude: 78.4867,
-            latitudeDelta: 0.05,
-            longitudeDelta: 0.05,
-          });
-          return;
-        }
-        const pos = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.High,
-        });
-        setUserLocation({
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        });
-      } catch (err: any) {
-        console.warn('Location error:', err.message);
-        // Fallback to Hyderabad if error
+  // ── Request Current Location (GPS + Reverse Geocode) ──
+  const requestCurrentLocation = useCallback(async () => {
+    setIsLocating(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setLocationPermissionGranted(false);
+        // Default to Hyderabad center if permission is denied
         setUserLocation({
           latitude: 17.385,
           longitude: 78.4867,
           latitudeDelta: 0.05,
           longitudeDelta: 0.05,
         });
+        setCurrentAddress('Hyderabad, Telangana');
+        setIsLocating(false);
+        return;
       }
-    })();
 
-    // Fetch initial nearby drivers (approx center of hyderabad if no gps yet)
+      setLocationPermissionGranted(true);
+      const pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const newRegion: LocationRegion = {
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        latitudeDelta: 0.015,
+        longitudeDelta: 0.015,
+      };
+      setUserLocation(newRegion);
+
+      // Reverse geocode via Backend to get readable address
+      try {
+        const revRes: any = await api.get('/ride/reverse-geocode', {
+          params: { lat: pos.coords.latitude, lng: pos.coords.longitude },
+        });
+        if (revRes.data?.address) {
+          setCurrentAddress(revRes.data.address);
+        } else if (typeof revRes === 'object' && revRes.address) {
+          setCurrentAddress(revRes.address);
+        }
+      } catch (err) {
+        setCurrentAddress(`${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`);
+      }
+    } catch (err: any) {
+      console.warn('Location retrieval error:', err.message);
+      setLocationPermissionGranted(false);
+      setUserLocation({
+        latitude: 17.385,
+        longitude: 78.4867,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      });
+      setCurrentAddress('Hyderabad, Telangana');
+    } finally {
+      setIsLocating(false);
+    }
+  }, []);
+
+  // ── Get GPS location on mount ──────────────
+  useEffect(() => {
+    requestCurrentLocation();
+
+    // Fetch nearby drivers
     (async () => {
       try {
-        const res = await api.get('/users/nearby?lat=17.385&lng=78.4867');
+        const res: any = await api.get('/users/nearby?lat=17.385&lng=78.4867');
+        const driverList = Array.isArray(res) ? res : res.data || [];
         const initialDrivers: any = {};
-        res.data.forEach((d: any) => {
+        driverList.forEach((d: any) => {
           if (d.currentLocation && d.currentLocation.coordinates) {
             initialDrivers[d._id] = {
               lat: d.currentLocation.coordinates[1],
@@ -170,15 +229,60 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
       } catch (err) {}
     })();
 
-    // Fetch Google Maps API key from backend
+    // Fetch Google Maps API key from backend if configured
     (async () => {
       try {
-        const res = await api.get('/config/maps-key');
-        setGoogleMapsKey(res.data.key || res.data);
+        const res: any = await api.get('/config/maps-key');
+        const key = res.key || res.data?.key || res;
+        if (typeof key === 'string') {
+          setGoogleMapsKey(key);
+        }
       } catch (e) {
-        console.log('Failed to fetch maps key', e);
+        console.log('Using configured maps key');
       }
     })();
+  }, [requestCurrentLocation]);
+
+  // ── Search Places (Autocomplete through Backend) ──
+  const searchPlaces = useCallback(async (query: string, bias?: { lat: number; lng: number }): Promise<AutocompleteItem[]> => {
+    if (!query || !query.trim()) return [];
+    try {
+      const res: any = await api.get('/ride/autocomplete', {
+        params: {
+          input: query.trim(),
+          lat: bias?.lat || userLocation?.latitude,
+          lng: bias?.lng || userLocation?.longitude,
+        },
+      });
+      const items = Array.isArray(res) ? res : res.data || [];
+      return items;
+    } catch (err: any) {
+      console.warn('Place search error:', err.message);
+      return [];
+    }
+  }, [userLocation]);
+
+  // ── Place Details Lookup ──
+  const getPlaceDetails = useCallback(async (placeId: string): Promise<PlaceDetails | null> => {
+    if (!placeId) return null;
+    try {
+      const res: any = await api.get('/ride/place-details', {
+        params: { placeId },
+      });
+      const data = res.data || res;
+      if (data && data.lat != null && data.lng != null) {
+        return {
+          name: data.name,
+          address: data.address,
+          lat: Number(data.lat),
+          lng: Number(data.lng),
+        };
+      }
+      return null;
+    } catch (err: any) {
+      console.warn('Place details error:', err.message);
+      return null;
+    }
   }, []);
 
   // ── Socket listeners ───────────────────────
@@ -193,16 +297,16 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
     };
     setupSocket();
 
-    // Available driver location update (for map)
+    // Available driver location update
     socket.on('available_driver_location', (data: any) => {
-      setAvailableDrivers(prev => ({
+      setAvailableDrivers((prev) => ({
         ...prev,
         [data.driverId]: {
           lat: data.lat,
           lng: data.lng,
           heading: data.heading,
           vehicleType: data.vehicleType,
-        }
+        },
       }));
     });
 
@@ -210,8 +314,8 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
     socket.on('ride_accepted', (data: { ride: ActiveRide; rider: Driver }) => {
       setDriver(data.rider);
       setActiveRide(data.ride);
-      activeRideIdRef.current = data.ride._id;
-      socket.emit('join_ride', data.ride._id);
+      activeRideIdRef.current = data.ride._id || (data.ride as any).id;
+      socket.emit('join_ride', activeRideIdRef.current);
       setAppState('ACCEPTED');
     });
 
@@ -227,14 +331,11 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
     });
 
     // Live driver location
-    socket.on(
-      'driver_location_update',
-      (data: { lat: number; lng: number }) => {
-        setDriverLocation({ latitude: data.lat, longitude: data.lng });
-      }
-    );
+    socket.on('driver_location_update', (data: { lat: number; lng: number }) => {
+      setDriverLocation({ latitude: data.lat, longitude: data.lng });
+    });
 
-    // Ride timed out (no drivers accepted in 10s)
+    // Ride timed out (no drivers accepted in 15s)
     socket.on('ride_timeout', (data: { rideId: string; message: string }) => {
       Alert.alert('No Riders Found', data.message);
       resetFlow();
@@ -252,38 +353,41 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
   // ── Fetch estimate ─────────────────────────
   const fetchEstimate = useCallback(
     async (
-      pickup: string | { lat: number; lng: number },
-      drop: string | { lat: number; lng: number }
-    ) => {
+      pickup: string | { lat: number; lng: number; address?: string; name?: string },
+      drop: string | { lat: number; lng: number; address?: string; name?: string }
+    ): Promise<Estimate | null> => {
       setAppState('ESTIMATING');
       setEstimate(null);
 
       try {
-        const res = await api.post('/ride/estimate', { pickup, drop });
-        const data = res.data;
+        const res: any = await api.post('/ride/estimate', { pickup, drop });
+        const data = res.data || res;
 
-        // 40 km hard limit check (redundant guard on client)
         if (data.limitExceeded) {
           Alert.alert(
-            'Too Far',
-            `The distance is ${data.distance} km, which exceeds our 40 km booking limit.`
+            'Distance Limit Exceeded',
+            `The route distance is ${data.distance} km, which exceeds our 40 km service limit.`
           );
           setAppState('IDLE');
-          return;
+          return null;
         }
 
         setEstimate(data);
+        return data;
       } catch (err: any) {
         const msg =
-          err.response?.data?.msg || 'Could not get ride estimate. Try again.';
-        Alert.alert('Estimation Failed', msg);
+          err.response?.data?.message ||
+          err.response?.data?.msg ||
+          'Could not calculate road route. Please verify locations and try again.';
+        Alert.alert('Route Estimation Failed', msg);
         setAppState('IDLE');
+        return null;
       }
     },
     []
   );
 
-  // ── Request ride ───────────────────────────
+  // ── Request ride with Idempotency ─────────
   const requestRide = useCallback(
     async (vehicleType: string) => {
       if (!estimate) return;
@@ -291,25 +395,34 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
       setAppState('SEARCHING');
 
       try {
-        const fareOption = estimate.fareOptions.find(
-          (o) => o.type === vehicleType
-        );
+        const fareOption = estimate.fareOptions.find((o) => o.type === vehicleType);
         const fare = fareOption?.fare ?? estimate.fareOptions[0]?.fare ?? 0;
+        const idempotencyKey = `ride_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-        const res = await api.post('/ride/create', {
-          pickup: estimate.pickup,
-          drop: estimate.drop,
-          fare,
-          distance: estimate.distance,
-          duration: estimate.duration,
-          polyline: estimate.polyline,
-          vehicleType,
-        });
+        const res: any = await api.post(
+          '/ride/create',
+          {
+            pickup: estimate.pickup,
+            drop: estimate.drop,
+            fare,
+            distance: estimate.distance,
+            duration: estimate.duration,
+            polyline: estimate.polyline,
+            vehicleType,
+            idempotencyKey,
+          },
+          {
+            headers: {
+              'x-idempotency-key': idempotencyKey,
+            },
+          }
+        );
 
-        activeRideIdRef.current = res.data._id;
-        socket.emit('join_ride', res.data._id);
+        const createdRide = res.data || res;
+        activeRideIdRef.current = createdRide._id || createdRide.id;
+        socket.emit('join_ride', activeRideIdRef.current);
       } catch (err: any) {
-        const msg = err.response?.data?.message || 'Could not book ride.';
+        const msg = err.response?.data?.message || err.response?.data?.msg || 'Could not book ride.';
         Alert.alert('Booking Failed', msg);
         setAppState('ESTIMATING');
       }
@@ -339,32 +452,41 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   // ── Logout ─────────────────────────────────
-  const logout = useCallback(async (navigation: any) => {
-    await AsyncStorage.multiRemove(['token', 'user', 'userId']);
-    socket.disconnect();
-    resetFlow();
-    if (navigation) {
-      if (typeof navigation.replace === 'function') {
-        navigation.replace('Auth');
-      } else if (typeof navigation.reset === 'function') {
-        navigation.reset({ index: 0, routes: [{ name: 'Auth' }] });
-      } else if (typeof navigation.navigate === 'function') {
-        navigation.navigate('Auth');
+  const logout = useCallback(
+    async (navigation: any) => {
+      await AsyncStorage.multiRemove(['token', 'user', 'userId']);
+      socket.disconnect();
+      resetFlow();
+      if (navigation) {
+        if (typeof navigation.replace === 'function') {
+          navigation.replace('Auth');
+        } else if (typeof navigation.reset === 'function') {
+          navigation.reset({ index: 0, routes: [{ name: 'Auth' }] });
+        } else if (typeof navigation.navigate === 'function') {
+          navigation.navigate('Auth');
+        }
       }
-    }
-  }, [resetFlow]);
+    },
+    [resetFlow]
+  );
 
   return (
     <CustomerContext.Provider
       value={{
         appState,
         userLocation,
+        currentAddress,
+        locationPermissionGranted,
+        isLocating,
         estimate,
         driver,
         activeRide,
         driverLocation,
         availableDrivers,
         googleMapsKey,
+        requestCurrentLocation,
+        searchPlaces,
+        getPlaceDetails,
         fetchEstimate,
         requestRide,
         cancelRide,

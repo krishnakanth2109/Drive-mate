@@ -1,55 +1,112 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, FlatList, TouchableOpacity, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/stack';
+import PlaceAutocompleteInput from '../../../components/PlaceAutocompleteInput';
+import { useCustomer } from '../../../context/CustomerContext';
 
 type Props = {
-  navigation: StackNavigationProp<any, 'LocationSelector'>;
+  navigation: StackNavigationProp<any, 'LocationSearch'>;
+  route?: any;
 };
 
 const recentLocations = [
-  { id: '1', name: 'Home', address: '123 Main St, Apartment 4B', icon: 'home' },
-  { id: '2', name: 'Work', address: '456 Tech Park, Building C', icon: 'briefcase' },
-  { id: '3', name: 'Central Mall', address: '789 Shopping Ave', icon: 'time' },
+  { id: '1', name: 'Charminar', address: 'Charminar Rd, Hyderabad', icon: 'time', lat: 17.3616, lng: 78.4747 },
+  { id: '2', name: 'Secunderabad Railway Station', address: 'Station Rd, Secunderabad', icon: 'train', lat: 17.4334, lng: 78.5045 },
+  { id: '3', name: 'Hitec City Cyber Towers', address: 'Hitec City, Madhapur, Hyderabad', icon: 'briefcase', lat: 17.4504, lng: 78.3808 },
+  { id: '4', name: 'RGIA Airport', address: 'Shamshabad, Hyderabad', icon: 'airplane', lat: 17.2403, lng: 78.4294 },
 ];
 
-export default function LocationSelectorScreen({ navigation }: Props) {
-  const [search, setSearch] = useState('');
+export default function LocationSearchScreen({ navigation, route }: Props) {
+  const { currentAddress, userLocation, requestCurrentLocation, fetchEstimate } = useCustomer();
+  const [searchText, setSearchText] = useState('');
+
+  const target = route?.params?.target || 'drop'; // 'pickup' | 'drop'
+
+  const handleSelectPlace = async (place: { name?: string; address: string; lat: number; lng: number }) => {
+    if (route?.params?.onSelect) {
+      route.params.onSelect(place);
+      navigation.goBack();
+      return;
+    }
+
+    if (userLocation) {
+      const pickup = {
+        lat: userLocation.latitude,
+        lng: userLocation.longitude,
+        address: currentAddress || 'Current Location',
+      };
+      await fetchEstimate(pickup, place);
+      navigation.navigate('MainDrawer');
+    } else {
+      navigation.goBack();
+    }
+  };
+
+  const handleUseCurrentLocation = async () => {
+    await requestCurrentLocation();
+    if (userLocation) {
+      handleSelectPlace({
+        name: 'Current Location',
+        address: currentAddress || 'Current Location',
+        lat: userLocation.latitude,
+        lng: userLocation.longitude,
+      });
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#333" />
+          <Ionicons name="arrow-back" size={24} color="#1a1a2e" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Select Location</Text>
+        <Text style={styles.headerTitle}>
+          {target === 'pickup' ? 'Select Pickup Point' : 'Select Destination'}
+        </Text>
       </View>
 
       <View style={styles.searchContainer}>
-        <View style={styles.inputWrapper}>
-          <Ionicons name="search" size={20} color="#888" style={styles.searchIcon} />
-          <TextInput
-            style={styles.input}
-            placeholder="Search destination"
-            value={search}
-            onChangeText={setSearch}
-            autoFocus
-          />
-        </View>
+        <PlaceAutocompleteInput
+          placeholder={target === 'pickup' ? 'Search pickup location...' : 'Where to? (e.g. Landmark, locality)...'}
+          value={searchText}
+          dotColor={target === 'pickup' ? '#06d6a0' : '#f72585'}
+          onChangeText={setSearchText}
+          onSelect={handleSelectPlace}
+          autoFocus
+        />
       </View>
 
-      <TouchableOpacity style={styles.currentLocationBtn}>
-        <Ionicons name="navigate" size={20} color="#f72585" />
-        <Text style={styles.currentLocationText}>Use my current location</Text>
+      <TouchableOpacity style={styles.currentLocationBtn} onPress={handleUseCurrentLocation}>
+        <View style={styles.gpsIconCircle}>
+          <Ionicons name="locate" size={20} color="#f72585" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.currentLocationText}>Use my current location</Text>
+          <Text style={styles.currentLocationSub} numberOfLines={1}>
+            {currentAddress || 'Acquiring GPS coordinates...'}
+          </Text>
+        </View>
       </TouchableOpacity>
 
       <View style={styles.recentSection}>
-        <Text style={styles.sectionTitle}>Recent Places</Text>
+        <Text style={styles.sectionTitle}>Popular & Recent Places</Text>
         <FlatList
           data={recentLocations}
           keyExtractor={(item) => item.id}
+          keyboardShouldPersistTaps="handled"
           renderItem={({ item }) => (
-            <TouchableOpacity style={styles.locationItem} onPress={() => navigation.goBack()}>
+            <TouchableOpacity
+              style={styles.locationItem}
+              onPress={() =>
+                handleSelectPlace({
+                  name: item.name,
+                  address: item.address,
+                  lat: item.lat,
+                  lng: item.lng,
+                })
+              }
+            >
               <View style={styles.iconContainer}>
                 <Ionicons name={item.icon as any} size={20} color="#666" />
               </View>
@@ -57,6 +114,7 @@ export default function LocationSelectorScreen({ navigation }: Props) {
                 <Text style={styles.locationName}>{item.name}</Text>
                 <Text style={styles.locationAddress}>{item.address}</Text>
               </View>
+              <Ionicons name="chevron-forward" size={18} color="#ccc" />
             </TouchableOpacity>
           )}
         />
@@ -66,94 +124,64 @@ export default function LocationSelectorScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
+  container: { flex: 1, backgroundColor: '#fff' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 15,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
-  backButton: {
-    marginRight: 15,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  searchContainer: {
-    padding: 15,
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-    borderRadius: 10,
-    paddingHorizontal: 15,
-    height: 50,
-  },
-  searchIcon: {
-    marginRight: 10,
-  },
-  input: {
-    flex: 1,
-    fontSize: 16,
-    color: '#333',
-  },
+  backButton: { marginRight: 14 },
+  headerTitle: { fontSize: 18, fontWeight: '800', color: '#1a1a2e' },
+  searchContainer: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6, zIndex: 100 },
   currentLocationBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 15,
-    borderBottomWidth: 8,
-    borderBottomColor: '#f5f5f5',
+    padding: 16,
+    borderBottomWidth: 6,
+    borderBottomColor: '#f8f9fa',
+    gap: 12,
   },
-  currentLocationText: {
-    color: '#f72585',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 10,
+  gpsIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(247, 37, 133, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  recentSection: {
-    flex: 1,
-  },
+  currentLocationText: { color: '#f72585', fontSize: 15, fontWeight: '700' },
+  currentLocationSub: { color: '#888', fontSize: 12, marginTop: 2 },
+  recentSection: { flex: 1, paddingTop: 8 },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-    padding: 15,
-    paddingBottom: 5,
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#888',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
   },
   locationItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 15,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: '#f4f4f4',
   },
   iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: '#f5f5f5',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 15,
+    marginRight: 14,
   },
-  locationDetails: {
-    flex: 1,
-  },
-  locationName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 4,
-  },
-  locationAddress: {
-    fontSize: 14,
-    color: '#888',
-  },
+  locationDetails: { flex: 1 },
+  locationName: { fontSize: 15, fontWeight: '700', color: '#222', marginBottom: 2 },
+  locationAddress: { fontSize: 13, color: '#888' },
 });

@@ -17,6 +17,8 @@ import supportRoutes from './routes/supportRoutes.js';
 import fleetRoutes from './routes/fleetRoutes.js';
 import operationsRoutes from './routes/operationsRoutes.js';
 import financeRoutes from './routes/financeRoutes.js';
+import walletRoutes from './routes/walletRoutes.js';
+import { initSettlementScheduler } from './services/settlementScheduler.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 dotenv.config();
@@ -26,6 +28,7 @@ declare global {
   namespace Express {
     interface Request {
       io?: Server;
+      rawBody?: Buffer;
     }
   }
 }
@@ -35,7 +38,13 @@ const server = http.createServer(app);
 
 // Allow All CORS
 app.use(cors());
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req: any, res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
 
 // --- Socket.io Setup ---
 const io = new Server(server, {
@@ -63,6 +72,7 @@ app.use('/api/support', supportRoutes);
 app.use('/api/fleet', fleetRoutes);
 app.use('/api/operations', operationsRoutes);
 app.use('/api/finance', financeRoutes);
+app.use('/api/wallet', walletRoutes);
 
 app.get('/api/config/maps-key', (req: Request, res: Response) => {
   res.json({ key: process.env.GOOGLE_MAPS_API_KEY || '' });
@@ -105,6 +115,9 @@ connectPrisma()
 connectRedis()
   .then(() => console.log('✅ Redis Initialized'))
   .catch((err) => console.error('❌ Redis Error:', err));
+
+// --- Weekly Settlement Scheduler ---
+initSettlementScheduler();
 
 // --- Socket Logic ---
 io.on('connection', (socket: Socket) => {

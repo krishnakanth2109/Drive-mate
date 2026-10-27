@@ -9,7 +9,7 @@ type Props = {
 
 export default function OTPVerificationScreen({ navigation }: Props) {
   const [otp, setOtp] = useState(['', '', '', '']);
-  const inputs = useRef<Array<TextInput | null>>([]);
+  const inputs = useRef<Array<any>>([]);
 
   const handleOtpChange = (value: string, index: number) => {
     const newOtp = [...otp];

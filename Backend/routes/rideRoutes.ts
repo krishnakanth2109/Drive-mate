@@ -1,6 +1,9 @@
 import express, { Router } from 'express';
 import auth from '../middleware/auth.js';
 import {
+  autocomplete,
+  getPlaceDetailsById,
+  reverseGeocode,
   estimateRide,
   createRide,
   acceptRide,
@@ -13,6 +16,12 @@ import {
 
 const router: Router = express.Router();
 
+// Places & Geocoding
+router.get('/autocomplete', auth, autocomplete);
+router.get('/place-details', auth, getPlaceDetailsById);
+router.get('/reverse-geocode', auth, reverseGeocode);
+
+// Ride booking & lifecycle
 router.post('/estimate', auth, estimateRide);
 router.post('/create', auth, createRide);
 router.put('/accept', auth, acceptRide);

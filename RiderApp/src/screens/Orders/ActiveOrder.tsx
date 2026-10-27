@@ -1,12 +1,44 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Linking, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Linking, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRider } from '../../context/RiderContext';
 import { riderService } from '../../services/riderService';
 import { Ride } from '../../services/types';
+import RiderWebMapView from '../../components/RiderWebMapView';
+
+// Decode encoded polyline helper
+const decodePolyline = (t: string): { latitude: number; longitude: number }[] => {
+  if (!t || t === 'encoded_polyline_placeholder') return [];
+  const points: { latitude: number; longitude: number }[] = [];
+  let index = 0;
+  const len = t.length;
+  let lat = 0;
+  let lng = 0;
+  while (index < len) {
+    let b: number;
+    let shift = 0;
+    let result = 0;
+    do {
+      b = t.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    lat += result & 1 ? ~(result >> 1) : result >> 1;
+    shift = 0;
+    result = 0;
+    do {
+      b = t.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    lng += result & 1 ? ~(result >> 1) : result >> 1;
+    points.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
+  }
+  return points;
+};
 
 export default function ActiveOrderScreen({ navigation }: any) {
-  const { activeRide, arriveAtPickup } = useRider();
+  const { activeRide, arriveAtPickup, location } = useRider();
   const [rideData, setRideData] = useState<Ride | null>(activeRide);
   const [loading, setLoading] = useState(false);
 
@@ -22,8 +54,20 @@ export default function ActiveOrderScreen({ navigation }: any) {
 
   const customerName = rideData?.customer?.name || 'Customer';
   const customerPhone = rideData?.customer?.phone || '+91 98765 43210';
-  const pickupAddress = rideData?.pickup?.address || '123 Main St, Apartment 4B';
+  const pickupAddress = rideData?.pickup?.address || 'Pickup Location';
   const dropAddress = rideData?.drop?.address || 'Destination';
+
+  const pickupCoord = rideData?.pickup?.lat != null && rideData?.pickup?.lng != null ? {
+    lat: Number(rideData.pickup.lat),
+    lng: Number(rideData.pickup.lng),
+  } : null;
+
+  const dropCoord = rideData?.drop?.lat != null && rideData?.drop?.lng != null ? {
+    lat: Number(rideData.drop.lat),
+    lng: Number(rideData.drop.lng),
+  } : null;
+
+  const routeCoords = rideData?.polyline ? decodePolyline(rideData.polyline) : [];
 
   const handleCall = () => {
     Linking.openURL(`tel:${customerPhone}`);
@@ -49,10 +93,20 @@ export default function ActiveOrderScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.mapPlaceholder}>
-        <Ionicons name="map" size={80} color="#f72585" />
-        <Text style={styles.mapText}>Live Tracking Map</Text>
-        <TouchableOpacity style={styles.navBtn} onPress={() => navigation.navigate('PickupNavigation')}>
+      {/* Interactive Map View */}
+      <View style={styles.mapArea}>
+        <RiderWebMapView
+          center={location || (pickupCoord ? { latitude: pickupCoord.lat, longitude: pickupCoord.lng } : null)}
+          pickupCoord={pickupCoord}
+          dropCoord={dropCoord}
+          routeCoords={routeCoords}
+          style={StyleSheet.absoluteFill}
+        />
+        <TouchableOpacity
+          style={styles.navBtn}
+          onPress={() => navigation.navigate(rideData?.status === 'ongoing' ? 'DropNavigation' : 'PickupNavigation')}
+          accessibilityLabel="Open turn-by-turn navigation"
+        >
           <Ionicons name="navigate" size={24} color="#fff" />
         </TouchableOpacity>
       </View>
@@ -60,10 +114,14 @@ export default function ActiveOrderScreen({ navigation }: any) {
       <View style={styles.bottomSheet}>
         <View style={styles.dragHandle} />
         <Text style={styles.statusTitle}>
-          {rideData?.status === 'arrived' ? 'Waiting for Customer' : 'Picking up Customer'}
+          {rideData?.status === 'arrived'
+            ? 'Waiting for Customer'
+            : rideData?.status === 'ongoing'
+            ? 'Heading to Destination'
+            : 'Picking up Customer'}
         </Text>
         <Text style={styles.timeText}>
-          {rideData?.distance ? `${rideData.distance} km away` : '1.2 km away'} • ₹{rideData?.fare || 150}
+          {rideData?.distance ? `${rideData.distance} km total` : 'En route'} • ₹{rideData?.fare || 0}
         </Text>
 
         <View style={styles.customerCard}>
@@ -98,16 +156,23 @@ export default function ActiveOrderScreen({ navigation }: any) {
           </View>
         </View>
 
-        {rideData?.status !== 'arrived' ? (
+        {rideData?.status !== 'arrived' && rideData?.status !== 'ongoing' ? (
           <TouchableOpacity style={styles.primaryBtn} onPress={handleArrive} disabled={loading}>
             {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Arrived at Pickup</Text>}
           </TouchableOpacity>
-        ) : (
+        ) : rideData?.status === 'arrived' ? (
           <TouchableOpacity
             style={[styles.primaryBtn, { backgroundColor: '#2ecc71' }]}
             onPress={() => navigation.navigate('DashboardRoot')}
           >
             <Text style={styles.primaryBtnText}>Enter Customer OTP</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[styles.primaryBtn, { backgroundColor: '#4CAF50' }]}
+            onPress={() => navigation.navigate('DropNavigation')}
+          >
+            <Text style={styles.primaryBtnText}>View Drop Navigation</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -117,24 +182,49 @@ export default function ActiveOrderScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#1E1E2C' },
-  mapPlaceholder: { flex: 1, backgroundColor: '#2a2a3c', justifyContent: 'center', alignItems: 'center' },
-  mapText: { color: '#a0a0b0', marginTop: 10, fontSize: 16 },
-  navBtn: { position: 'absolute', bottom: 20, right: 20, backgroundColor: '#f72585', width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center', elevation: 5, shadowColor: '#f72585', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.4 },
-  bottomSheet: { backgroundColor: '#1E1E2C', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, shadowColor: '#000', shadowOffset: { width: 0, height: -5 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 10 },
-  dragHandle: { width: 40, height: 5, backgroundColor: '#3b3b4f', borderRadius: 3, alignSelf: 'center', marginBottom: 20 },
-  statusTitle: { fontSize: 22, fontWeight: 'bold', color: '#fff', marginBottom: 5 },
-  timeText: { fontSize: 16, color: '#f72585', fontWeight: '600', marginBottom: 20 },
-  customerCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#2a2a3c', padding: 15, borderRadius: 15, marginBottom: 20 },
-  avatarPlaceholder: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#3b3b4f', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+  mapArea: { flex: 1, backgroundColor: '#242436', position: 'relative' },
+  navBtn: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    backgroundColor: '#f72585',
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    zIndex: 10,
+  },
+  bottomSheet: {
+    backgroundColor: '#1E1E2C',
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -5 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  dragHandle: { width: 40, height: 5, backgroundColor: '#3b3b4f', borderRadius: 3, alignSelf: 'center', marginBottom: 18 },
+  statusTitle: { fontSize: 20, fontWeight: 'bold', color: '#fff', marginBottom: 4 },
+  timeText: { fontSize: 15, color: '#f72585', fontWeight: '600', marginBottom: 18 },
+  customerCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#2a2a3c', padding: 14, borderRadius: 14, marginBottom: 16 },
+  avatarPlaceholder: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#3b3b4f', justifyContent: 'center', alignItems: 'center', marginRight: 14 },
   customerInfo: { flex: 1 },
-  customerName: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  customerName: { color: '#fff', fontSize: 17, fontWeight: 'bold' },
   ratingRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
-  ratingText: { color: '#a0a0b0', marginLeft: 4, fontSize: 14 },
+  ratingText: { color: '#a0a0b0', marginLeft: 4, fontSize: 13 },
   actionButtons: { flexDirection: 'row' },
   iconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(247, 37, 133, 0.1)', justifyContent: 'center', alignItems: 'center', marginLeft: 10 },
-  locationInfo: { backgroundColor: '#2a2a3c', padding: 15, borderRadius: 15, marginBottom: 20 },
+  locationInfo: { backgroundColor: '#2a2a3c', padding: 14, borderRadius: 14, marginBottom: 18 },
   locRow: { flexDirection: 'row', alignItems: 'center' },
-  locText: { color: '#fff', marginLeft: 10, flex: 1, fontSize: 16 },
-  primaryBtn: { backgroundColor: '#f72585', padding: 18, borderRadius: 15, alignItems: 'center' },
-  primaryBtnText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  locText: { color: '#fff', marginLeft: 10, flex: 1, fontSize: 14 },
+  primaryBtn: { backgroundColor: '#f72585', paddingVertical: 16, borderRadius: 14, alignItems: 'center' },
+  primaryBtnText: { color: '#fff', fontSize: 17, fontWeight: 'bold' },
 });

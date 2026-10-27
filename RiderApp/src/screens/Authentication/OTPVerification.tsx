@@ -9,7 +9,7 @@ export default function OTPVerificationScreen({ navigation, route }: any) {
 
   const [otp, setOtp] = useState(demoOtp ? demoOtp.split('') : ['', '', '', '']);
   const [loading, setLoading] = useState(false);
-  const inputs = useRef<Array<TextInput | null>>([]);
+  const inputs = useRef<Array<any>>([]);
 
   const handleOtpChange = (value: string, index: number) => {
     const newOtp = [...otp];
