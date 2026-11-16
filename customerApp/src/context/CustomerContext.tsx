@@ -71,6 +71,9 @@ export interface ActiveRide {
   otp: string;
   fare: number;
   status: string;
+  arrivedAt?: string | null;
+  startedAt?: string | null;
+  waitCharges?: number;
   pickup: { address: string; lat: number; lng: number; name?: string };
   drop: { address: string; lat: number; lng: number; name?: string };
 }
@@ -89,6 +92,17 @@ export interface PlaceDetails {
   lng: number;
 }
 
+export interface CustomerUser {
+  id: string;
+  _id?: string;
+  name: string;
+  email: string;
+  phone: string;
+  rating?: number;
+  avatar?: string;
+  walletBalance?: number;
+}
+
 interface CustomerContextType {
   appState: AppState;
   userLocation: LocationRegion | null;
@@ -101,6 +115,11 @@ interface CustomerContextType {
   driverLocation: DriverLocation | null;
   availableDrivers: { [id: string]: { lat: number; lng: number; heading: number; vehicleType: string } };
   googleMapsKey: string | null;
+  currentUser: CustomerUser | null;
+  setCurrentUser: (user: CustomerUser | null) => void;
+  isLoggedIn: boolean;
+  saveAuthSession: (token: string, user: CustomerUser, rememberMe?: boolean) => Promise<void>;
+  checkAndRestoreSession: () => Promise<CustomerUser | null>;
   requestCurrentLocation: () => Promise<void>;
   searchPlaces: (query: string, bias?: { lat: number; lng: number }) => Promise<AutocompleteItem[]>;
   getPlaceDetails: (placeId: string) => Promise<PlaceDetails | null>;
@@ -131,6 +150,8 @@ export const useCustomer = () => {
 export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
+  const [currentUser, setCurrentUser] = useState<CustomerUser | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [appState, setAppState] = useState<AppState>('IDLE');
   const [userLocation, setUserLocation] = useState<LocationRegion | null>(null);
   const [currentAddress, setCurrentAddress] = useState<string | null>(null);
@@ -144,6 +165,62 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
   const [googleMapsKey, setGoogleMapsKey] = useState<string | null>('AIzaSyDOMtmUqwZCLcEHSGQI4WpBLnvBiEPmX2E');
 
   const activeRideIdRef = useRef<string | null>(null);
+
+  // ── Restore saved authentication session ────
+  const checkAndRestoreSession = useCallback(async (): Promise<CustomerUser | null> => {
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const userStr = await AsyncStorage.getItem('user');
+      if (token && userStr) {
+        const parsedUser = JSON.parse(userStr);
+        setCurrentUser(parsedUser);
+        setIsLoggedIn(true);
+
+        // Attach token and connect socket
+        await connectSocket();
+        const uid = parsedUser._id || parsedUser.id;
+        if (uid) {
+          socket.emit('join_room', uid);
+        }
+        socket.emit('join_customers_room');
+
+        return parsedUser;
+      }
+    } catch (err) {
+      console.warn('Session restoration failed:', err);
+    }
+    return null;
+  }, []);
+
+  // ── Save session permanently ────────────────
+  const saveAuthSession = useCallback(
+    async (token: string, user: CustomerUser, rememberMe: boolean = true) => {
+      try {
+        await AsyncStorage.setItem('token', token);
+        await AsyncStorage.setItem('user', JSON.stringify(user));
+        const uid = user._id || user.id;
+        if (uid) {
+          await AsyncStorage.setItem('userId', uid);
+        }
+        if (rememberMe) {
+          await AsyncStorage.setItem('remember_me', 'true');
+          if (user.email) await AsyncStorage.setItem('saved_email', user.email);
+          if (user.phone) await AsyncStorage.setItem('saved_phone', user.phone);
+        }
+        setCurrentUser(user);
+        setIsLoggedIn(true);
+
+        await connectSocket();
+        if (uid) {
+          socket.emit('join_room', uid);
+        }
+        socket.emit('join_customers_room');
+      } catch (err) {
+        console.error('Error saving session to storage:', err);
+      }
+    },
+    []
+  );
 
   // ── Request Current Location (GPS + Reverse Geocode) ──
   const requestCurrentLocation = useCallback(async () => {
@@ -205,8 +282,9 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
-  // ── Get GPS location on mount ──────────────
+  // ── Get GPS location & restore session on mount ──────────────
   useEffect(() => {
+    checkAndRestoreSession();
     requestCurrentLocation();
 
     // Fetch nearby drivers
@@ -319,15 +397,34 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
       setAppState('ACCEPTED');
     });
 
-    // Ride status updates (ongoing / completed)
-    socket.on('ride_status_update', (data: { status: string; ride: ActiveRide }) => {
-      if (data.status === 'ongoing') {
+    // Ride status updates (arrived / ongoing / completed)
+    socket.on('ride_status_update', (data: { status: string; ride: ActiveRide; waitInfo?: any }) => {
+      if (data.status === 'arrived') {
+        setActiveRide(data.ride);
+      } else if (data.status === 'ongoing') {
         setActiveRide(data.ride);
         setAppState('ONGOING');
       } else if (data.status === 'completed') {
         setAppState('COMPLETED');
         activeRideIdRef.current = null;
       }
+    });
+
+    // Driver arrived at pickup notification
+    socket.on('driver_arrived', (data: { ride: ActiveRide; freeWaitMinutes?: number }) => {
+      setActiveRide(data.ride);
+      Alert.alert(
+        'Driver Arrived!',
+        `Your driver has arrived at the pickup location. Free waiting period is ${data.freeWaitMinutes || 3} minutes.`
+      );
+    });
+
+    // Free 3-min wait expired notification
+    socket.on('wait_time_expired', (data: { message?: string }) => {
+      Alert.alert(
+        'Wait Time Exceeded',
+        data.message || 'Free 3-minute wait period has ended. Waiting charges of ₹2/min now apply.'
+      );
     });
 
     // Live driver location
@@ -344,6 +441,8 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
     return () => {
       socket.off('ride_accepted');
       socket.off('ride_status_update');
+      socket.off('driver_arrived');
+      socket.off('wait_time_expired');
       socket.off('driver_location_update');
       socket.off('available_driver_location');
       socket.off('ride_timeout');
@@ -455,6 +554,8 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
   const logout = useCallback(
     async (navigation: any) => {
       await AsyncStorage.multiRemove(['token', 'user', 'userId']);
+      setCurrentUser(null);
+      setIsLoggedIn(false);
       socket.disconnect();
       resetFlow();
       if (navigation) {
@@ -484,6 +585,11 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
         driverLocation,
         availableDrivers,
         googleMapsKey,
+        currentUser,
+        setCurrentUser,
+        isLoggedIn,
+        saveAuthSession,
+        checkAndRestoreSession,
         requestCurrentLocation,
         searchPlaces,
         getPlaceDetails,

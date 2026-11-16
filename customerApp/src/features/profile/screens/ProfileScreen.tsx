@@ -5,23 +5,38 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCustomer } from '../../../context/CustomerContext';
 
 export default function MyAccountScreen({ navigation }: any) {
-  const { logout } = useCustomer();
-  const [userData, setUserData] = useState<{name: string, phone: string} | null>(null);
+  const { logout, currentUser } = useCustomer();
+  const [userData, setUserData] = useState<{name: string, phone: string, email?: string} | null>(currentUser);
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const userStr = await AsyncStorage.getItem('user');
-        if (userStr) {
-          setUserData(JSON.parse(userStr));
+    if (currentUser) {
+      setUserData(currentUser);
+    } else {
+      const fetchUser = async () => {
+        try {
+          const userStr = await AsyncStorage.getItem('user');
+          if (userStr) {
+            setUserData(JSON.parse(userStr));
+          }
+        } catch (err) {
+          console.error("Failed to load user data");
         }
-      } catch (err) {
-        console.error("Failed to load user data");
-      }
-    };
-    fetchUser();
-  }, []);
+      };
+      fetchUser();
+    }
+  }, [currentUser]);
+
+  const handleLogout = () => {
+    Alert.alert(
+      'Log Out',
+      'Are you sure you want to log out of your DriveMate account?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Log Out', style: 'destructive', onPress: () => logout(navigation) },
+      ]
+    );
+  };
 
   const menuItems = [
     { id: '1', title: 'My Wallet', icon: 'wallet-outline', screen: 'Wallet' },
@@ -34,6 +49,10 @@ export default function MyAccountScreen({ navigation }: any) {
     { id: '8', title: 'Help & Support', icon: 'help-circle-outline', screen: 'Help' },
   ];
 
+  const displayName = userData?.name || currentUser?.name || 'DriveMate Passenger';
+  const displayPhone = userData?.phone || currentUser?.phone || '+91 98845 22109';
+  const displayInitial = (displayName || 'P')[0].toUpperCase();
+
   return (
     <SafeAreaView style={[styles.safeArea, isDark && styles.safeAreaDark]}>
       <ScrollView style={[styles.container, isDark && styles.containerDark]} contentContainerStyle={styles.scrollContent}>
@@ -45,11 +64,17 @@ export default function MyAccountScreen({ navigation }: any) {
         <TouchableOpacity style={[styles.profileCard, isDark && styles.profileCardDark]}>
           <View style={styles.profileLeft}>
             <View style={styles.avatarContainer}>
-              <Ionicons name="person" size={28} color="#3b5998" />
+              <Text style={{ fontSize: 20, fontWeight: '800', color: '#f72585' }}>{displayInitial}</Text>
             </View>
             <View style={styles.profileInfo}>
-              <Text style={[styles.profileName, isDark && styles.textDark]}>{userData?.name || 'Loading...'}</Text>
-              <Text style={styles.profilePhone}>{userData?.phone || 'Loading...'}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={[styles.profileName, isDark && styles.textDark]}>{displayName}</Text>
+                <Ionicons name="checkmark-circle" size={16} color="#06d6a0" />
+              </View>
+              <Text style={styles.profilePhone}>{displayPhone}</Text>
+              <Text style={{ fontSize: 11, color: '#f72585', fontWeight: '700', marginTop: 2 }}>
+                Verified Passenger • Level 2
+              </Text>
             </View>
           </View>
           <Ionicons name="chevron-forward" size={20} color={isDark ? "#fff" : "#333"} />
@@ -111,7 +136,7 @@ export default function MyAccountScreen({ navigation }: any) {
         </View>
 
         {/* Logout Button */}
-        <TouchableOpacity style={[styles.logoutBtn, isDark && styles.logoutBtnDark]} onPress={() => logout(navigation)}>
+        <TouchableOpacity style={[styles.logoutBtn, isDark && styles.logoutBtnDark]} onPress={handleLogout}>
           <Text style={styles.logoutText}>Log Out</Text>
         </TouchableOpacity>
 

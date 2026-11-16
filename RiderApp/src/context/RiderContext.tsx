@@ -280,8 +280,8 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
 
   const logout = async (nav: any) => {
       setIsOnline(false);
-      stopLocationUpdates();
-      await AsyncStorage.clear();
+      // Clear session auth tokens but keep saved credentials if Remember Me was selected
+      await AsyncStorage.multiRemove(['token', 'userId', 'user', 'rider']);
       socket.disconnect();
       if (nav?.replace) {
         nav.replace('Login');

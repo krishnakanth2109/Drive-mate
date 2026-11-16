@@ -22,6 +22,19 @@ model Customer {
   powerPassActive     Boolean         @default(false) @map("power_pass_active")
   powerPassPlan       String?         @map("power_pass_plan")
   powerPassValidUntil DateTime?       @map("power_pass_valid_until")
+  firstName           String?         @map("first_name")
+  lastName            String?         @map("last_name")
+  profession          String?
+  company             String?
+  industry            String?
+  city                String?         @default("Bangalore")
+  purpose             String?
+  agreedTerms         Boolean         @default(true) @map("agreed_terms")
+  avatarUrl           String?         @map("avatar_url")
+  bio                 String?
+  isEmailVerified     Boolean         @default(false) @map("is_email_verified")
+  emailOtp            String?         @map("email_otp")
+  emailOtpExpires     DateTime?       @map("email_otp_expires")
   createdAt           DateTime        @default(now()) @map("created_at")
   updatedAt           DateTime        @updatedAt @map("updated_at")
 
@@ -33,6 +46,11 @@ model Customer {
   transactions        Transaction[]
   refundVouchers      RefundVoucher[]
   wallet              Wallet?
+  communityPosts      CommunityRidePost[]
+  sentConnections     UserConnection[] @relation("SentConnections")
+  receivedConnections UserConnection[] @relation("ReceivedConnections")
+  sentMessages        DirectMessage[]  @relation("SentDirectMessages")
+  receivedMessages    DirectMessage[]  @relation("ReceivedDirectMessages")
 
   @@map("customers")
 }
@@ -709,4 +727,68 @@ model IdempotencyRecord {
   @@index([key, expiresAt])
   @@map("idempotency_records")
 }
+
+// =========================================================================
+// COMMUNITY RIDE-SHARING, PROFILES & MESSAGING
+// =========================================================================
+
+model CommunityRidePost {
+  id               String   @id
+  authorId         String   @map("author_id")
+  authorName       String   @map("author_name")
+  authorPhone      String?  @map("author_phone")
+  authorProfession String?  @map("author_profession")
+  authorCompany    String?  @map("author_company")
+  authorAvatar     String?  @map("author_avatar")
+  city             String   @default("Bangalore")
+  fromLocation     String   @map("from_location")
+  toLocation       String   @map("to_location")
+  departureTime    String   @map("departure_time")
+  returnTime       String?  @map("return_time")
+  days             String   @default("Mon-Fri")
+  vehicleType      String   @default("Car") @map("vehicle_type")
+  seatsAvailable   Int      @default(3) @map("seats_available")
+  fuelShareCost    Decimal? @map("fuel_share_cost") @db.Decimal(10, 2)
+  preferences      String?
+  status           String   @default("active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  author           Customer @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([city, status])
+  @@index([authorId])
+  @@map("community_ride_posts")
+}
+
+model UserConnection {
+  id          String   @id
+  requesterId String   @map("requester_id")
+  recipientId String   @map("recipient_id")
+  status      String   @default("connected")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  requester   Customer @relation("SentConnections", fields: [requesterId], references: [id], onDelete: Cascade)
+  recipient   Customer @relation("ReceivedConnections", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@unique([requesterId, recipientId])
+  @@map("user_connections")
+}
+
+model DirectMessage {
+  id         String   @id
+  senderId   String   @map("sender_id")
+  receiverId String   @map("receiver_id")
+  message    String
+  isRead     Boolean  @default(false) @map("is_read")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  sender     Customer @relation("SentDirectMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver   Customer @relation("ReceivedDirectMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([senderId, receiverId])
+  @@map("direct_messages")
+}
+
 

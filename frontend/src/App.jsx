@@ -37,6 +37,11 @@ import { CustomerAppPage } from './pages/CustomerAppPage';
 import { SafetyPage } from './pages/SafetyPage';
 import { SupportPage } from './pages/SupportPage';
 
+// User & Commuter Community Pages
+import { LoginPage } from './pages/LoginPage';
+import { RegisterPage } from './pages/RegisterPage';
+import { UserDashboard } from './pages/UserDashboard';
+
 function MasterRoute({ children }) {
   const token = sessionStorage.getItem('vlt_master_token');
   return token ? children : <Navigate to="/master" replace />;
@@ -60,9 +65,14 @@ function App() {
           <Route path="/safety" element={<SafetyPage />} />
           <Route path="/support" element={<SupportPage />} />
 
-          {/* User Logins & Role Selection Portal */}
+          {/* User Commuter Community & 7-Step Auth */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/dashboard" element={<UserDashboard />} />
+          <Route path="/community" element={<Navigate to="/dashboard" replace />} />
+
+          {/* Staff Master Suite Portal */}
           <Route path="/master" element={<MasterAuth />} />
-          <Route path="/login" element={<Navigate to="/master" replace />} />
 
           {/* Protected Master Staff Suite */}
           <Route

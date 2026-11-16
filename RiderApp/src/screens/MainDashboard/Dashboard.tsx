@@ -1,8 +1,9 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Switch, TouchableOpacity, Platform, Modal, TextInput, Alert, ActivityIndicator } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import RiderWebMapView from '../../components/RiderWebMapView';
 import SwipeButton from '../../components/SwipeButton';
+import DriverInRideSupportModal from '../../components/DriverInRideSupportModal';
 import { RiderProvider, useRider } from '../../context/RiderContext';
 
 
@@ -90,6 +91,8 @@ const BottomPanel = () => {
   const [otpModalVisible, setOtpModalVisible] = useState(false);
   const [waitTime, setWaitTime] = useState(0);
 
+  const [supportModalVisible, setSupportModalVisible] = useState(false);
+
   // Timer logic for wait time
   useEffect(() => {
     let interval: any;
@@ -115,9 +118,36 @@ const BottomPanel = () => {
   // 1. ACTIVE RIDE (Ongoing)
   if (activeRide) {
     const isStarted = activeRide.status === 'ongoing';
+    const rawId = (activeRide as any)?.id || activeRide._id || '';
+    const cleanDisplayId = (activeRide as any)?.displayId || `DM-${rawId.slice(-6).toUpperCase()}`;
 
     return (
       <View style={styles.panel}>
+        {/* Top Ride ID & Partner Support Header */}
+        <View style={styles.rideIdTopBar}>
+          <TouchableOpacity
+            style={styles.rideIdTag}
+            activeOpacity={0.8}
+            onPress={() => {
+              Alert.alert('Ride Reference', `Ride ID: #${cleanDisplayId}\nFull Reference: ${rawId}`);
+            }}
+          >
+            <Ionicons name="receipt-outline" size={13} color="#f72585" />
+            <Text style={styles.rideIdTagLabel}>RIDE ID:</Text>
+            <Text style={styles.rideIdTagText}>#{cleanDisplayId}</Text>
+            <Ionicons name="copy-outline" size={12} color="#f72585" style={{ marginLeft: 3 }} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.driverSupportBtn}
+            onPress={() => setSupportModalVisible(true)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="headset" size={13} color="#ffffff" />
+            <Text style={styles.driverSupportBtnText}>Help & Safety</Text>
+          </TouchableOpacity>
+        </View>
+
         <Text style={styles.panelTitle}>
           {activeRide.status === 'accepted' ? "Head to Pickup" : 
            activeRide.status === 'arrived' ? "Waiting for Customer" : 
@@ -164,6 +194,19 @@ const BottomPanel = () => {
         {activeRide.status === 'ongoing' && (
           <SwipeButton title="Swipe to Complete" onSwipeSuccess={completeRide} buttonColor="#f72585" />
         )}
+
+        {/* Driver In-Ride Support Modal */}
+        <DriverInRideSupportModal
+          visible={supportModalVisible}
+          onClose={() => setSupportModalVisible(false)}
+          rideId={rawId}
+          displayId={cleanDisplayId}
+          customerName={activeRide.customer?.name}
+          customerPhone={activeRide.customer?.phone}
+          fare={activeRide.fare}
+          waitTimeFormatted={formatTime(waitTime)}
+          waitTimeMs={waitTime}
+        />
 
         {/* OTP MODAL */}
         <Modal visible={otpModalVisible} transparent animationType="slide">
@@ -320,5 +363,50 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 15 },
   otpInput: { borderBottomWidth: 2, borderColor: 'black', textAlign: 'center', fontSize: 30, letterSpacing: 10, marginBottom: 20 },
   modalBtns: { flexDirection: 'row', gap: 10 },
-  btnOutline: { flex: 1, padding: 15, borderWidth: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }
+  btnOutline: { flex: 1, padding: 15, borderWidth: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+
+  // In-Ride Top Bar & Support
+  rideIdTopBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  rideIdTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(247, 37, 133, 0.08)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(247, 37, 133, 0.25)',
+  },
+  rideIdTagLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#f72585',
+    marginRight: 4,
+  },
+  rideIdTagText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#1a1a2e',
+    letterSpacing: 0.5,
+  },
+  driverSupportBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#3498db',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 5,
+    elevation: 2,
+  },
+  driverSupportBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
 });

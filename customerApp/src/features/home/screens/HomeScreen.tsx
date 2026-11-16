@@ -15,6 +15,7 @@ import { DrawerActions } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import WebMapView, { RoutePoint } from '../../../components/WebMapView';
 import PlaceAutocompleteInput from '../../../components/PlaceAutocompleteInput';
+import InRideSupportModal from '../../../components/InRideSupportModal';
 import { useCustomer } from '../../../context/CustomerContext';
 
 const { width, height } = Dimensions.get('window');
@@ -374,6 +375,61 @@ const InputPanel = ({
         </View>
       </View>
 
+      {/* Quick Destination Chips */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickChipsScroll}>
+        <TouchableOpacity
+          style={styles.quickChip}
+          onPress={() => {
+            const loc = { lat: 17.4375, lng: 78.4482, name: 'Indiranagar Metro Station', address: 'Indiranagar Metro Station, 100ft Road' };
+            setDropText(loc.address);
+            setDropCoords(loc);
+          }}
+          activeOpacity={0.75}
+        >
+          <Text style={styles.quickChipEmoji}>🚇</Text>
+          <Text style={styles.quickChipText}>Metro Station</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.quickChip}
+          onPress={() => {
+            const loc = { lat: 17.4435, lng: 78.3772, name: 'Cyber Towers Hitec City', address: 'Cyber Towers, Hitec City' };
+            setDropText(loc.address);
+            setDropCoords(loc);
+          }}
+          activeOpacity={0.75}
+        >
+          <Text style={styles.quickChipEmoji}>💼</Text>
+          <Text style={styles.quickChipText}>Work</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.quickChip}
+          onPress={() => {
+            const loc = { lat: 17.2403, lng: 78.4294, name: 'Rajiv Gandhi Intl Airport', address: 'Rajiv Gandhi International Airport (RGIA)' };
+            setDropText(loc.address);
+            setDropCoords(loc);
+          }}
+          activeOpacity={0.75}
+        >
+          <Text style={styles.quickChipEmoji}>✈️</Text>
+          <Text style={styles.quickChipText}>Airport</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.quickChip}
+          onPress={() => {
+            const loc = { lat: 17.3984, lng: 78.4908, name: 'HSR Layout BDA', address: 'HSR Layout BDA Complex' };
+            setDropText(loc.address);
+            setDropCoords(loc);
+          }}
+          activeOpacity={0.75}
+        >
+          <Text style={styles.quickChipEmoji}>🏠</Text>
+          <Text style={styles.quickChipText}>Home</Text>
+        </TouchableOpacity>
+      </ScrollView>
+
       {/* Find Rides CTA Button */}
       <TouchableOpacity
         style={[styles.findBtn, isEstimatingRoute && { opacity: 0.8 }]}
@@ -394,6 +450,56 @@ const InputPanel = ({
 };
 
 // ─────────────────────────────────────────────
+// 3-MINUTE WAIT TIMER BADGE
+// ─────────────────────────────────────────────
+const WaitTimerBadge = ({ arrivedAt }: { arrivedAt?: string | null }) => {
+  const [secondsRemaining, setSecondsRemaining] = useState<number>(180);
+  const [isExpired, setIsExpired] = useState<boolean>(false);
+  const [extraMinutes, setExtraMinutes] = useState<number>(0);
+
+  useEffect(() => {
+    const calculateTime = () => {
+      const arrivedTime = arrivedAt ? new Date(arrivedAt).getTime() : Date.now();
+      const elapsedSeconds = Math.max(0, Math.floor((Date.now() - arrivedTime) / 1000));
+      const freeSeconds = 180; // 3 minutes
+      if (elapsedSeconds < freeSeconds) {
+        setSecondsRemaining(freeSeconds - elapsedSeconds);
+        setIsExpired(false);
+        setExtraMinutes(0);
+      } else {
+        setSecondsRemaining(0);
+        setIsExpired(true);
+        const extraSecs = elapsedSeconds - freeSeconds;
+        setExtraMinutes(Math.max(1, Math.ceil(extraSecs / 60)));
+      }
+    };
+
+    calculateTime();
+    const interval = setInterval(calculateTime, 1000);
+    return () => clearInterval(interval);
+  }, [arrivedAt]);
+
+  const mins = Math.floor(secondsRemaining / 60);
+  const secs = secondsRemaining % 60;
+  const timeFormatted = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+
+  return (
+    <View style={[styles.waitTimerBox, isExpired && styles.waitTimerBoxExpired]}>
+      <Ionicons name="time" size={16} color={isExpired ? '#e63946' : '#f72585'} />
+      {!isExpired ? (
+        <Text style={styles.waitTimerText}>
+          Free Waiting Time: <Text style={styles.waitTimerBold}>{timeFormatted}</Text>
+        </Text>
+      ) : (
+        <Text style={styles.waitTimerExpiredText}>
+          Free wait time ended (+₹{extraMinutes * 2} wait charges)
+        </Text>
+      )}
+    </View>
+  );
+};
+
+// ─────────────────────────────────────────────
 // STATUS PANEL (ESTIMATING → SEARCHING → ACTIVE → COMPLETED)
 // ─────────────────────────────────────────────
 const StatusPanel = () => {
@@ -401,6 +507,7 @@ const StatusPanel = () => {
 
   const [selectedVehicle, setSelectedVehicle] = useState<string>('bike');
   const [isConfirming, setIsConfirming] = useState<boolean>(false);
+  const [isSupportModalVisible, setIsSupportModalVisible] = useState<boolean>(false);
 
   if (appState === 'IDLE') return null;
 
@@ -535,21 +642,65 @@ const StatusPanel = () => {
 
   // ── ACCEPTED / ONGOING ──────────────────────
   if ((appState === 'ACCEPTED' || appState === 'ONGOING') && driver && activeRide) {
+    const rawId = (activeRide as any)?.id || activeRide._id || '';
+    const cleanDisplayId = (activeRide as any)?.displayId || `DM-${rawId.slice(-6).toUpperCase()}`;
+
     return (
       <View style={styles.panel}>
         <View style={styles.handle} />
+
+        {/* Top Ride ID & Support Row */}
+        <View style={styles.rideIdTopBar}>
+          <TouchableOpacity
+            style={styles.rideIdTag}
+            activeOpacity={0.8}
+            onPress={() => {
+              Alert.alert('Ride Reference', `Ride ID: #${cleanDisplayId}\nFull Reference: ${rawId}`);
+            }}
+          >
+            <Ionicons name="receipt-outline" size={13} color="#8b5cf6" />
+            <Text style={styles.rideIdTagLabel}>RIDE ID:</Text>
+            <Text style={styles.rideIdTagText}>#{cleanDisplayId}</Text>
+            <Ionicons name="copy-outline" size={12} color="#8b5cf6" style={{ marginLeft: 3 }} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.inRideSupportBtn}
+            onPress={() => setIsSupportModalVisible(true)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="headset" size={13} color="#ffffff" />
+            <Text style={styles.inRideSupportBtnText}>Help & Support</Text>
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.statusBadge}>
           <View
             style={[
               styles.statusDot,
-              { backgroundColor: appState === 'ACCEPTED' ? '#ffd166' : '#06d6a0' },
+              {
+                backgroundColor:
+                  activeRide.status === 'arrived'
+                    ? '#06d6a0'
+                    : appState === 'ACCEPTED'
+                    ? '#ffd166'
+                    : '#06d6a0',
+              },
             ]}
           />
           <Text style={styles.statusBadgeText}>
-            {appState === 'ACCEPTED' ? 'Driver is heading to pickup' : 'Ride In Progress'}
+            {activeRide.status === 'arrived'
+              ? 'Driver has arrived at pickup'
+              : appState === 'ACCEPTED'
+              ? 'Driver is heading to pickup'
+              : 'Ride In Progress'}
           </Text>
         </View>
+
+        {/* 3-Minute Free Wait Timer Badge when Driver has Arrived */}
+        {activeRide.status === 'arrived' && (
+          <WaitTimerBadge arrivedAt={activeRide.arrivedAt} />
+        )}
 
         {/* Driver Card */}
         <View style={styles.driverCard}>
@@ -580,6 +731,17 @@ const StatusPanel = () => {
             <Text style={styles.tripText}>₹{activeRide.fare}</Text>
           </View>
         </View>
+
+        {/* Dedicated In-Ride Support Modal */}
+        <InRideSupportModal
+          visible={isSupportModalVisible}
+          onClose={() => setIsSupportModalVisible(false)}
+          rideId={rawId}
+          displayId={cleanDisplayId}
+          driverName={driver.name}
+          driverPhone={driver.phone}
+          fare={activeRide.fare}
+        />
       </View>
     );
   }
@@ -605,16 +767,19 @@ const StatusPanel = () => {
 // MAIN DASHBOARD COMPONENT
 // ─────────────────────────────────────────────
 export default function CustomerDashboard({ navigation }: any) {
-  const { logout, requestCurrentLocation } = useCustomer();
+  const { logout, requestCurrentLocation, currentUser } = useCustomer();
   const [isPinPicking, setIsPinPicking] = useState<boolean>(false);
   const [pinTarget, setPinTarget] = useState<'pickup' | 'drop'>('drop');
   const [pinLocation, setPinLocation] = useState<{ lat: number; lng: number } | null>(null);
+
+  const firstName = currentUser?.name ? currentUser.name.split(' ')[0] : 'Passenger';
+  const initialLetter = (currentUser?.name || 'P')[0].toUpperCase();
 
   return (
     <View style={styles.container}>
       <MapComponent isPinPicking={isPinPicking} onPinChange={setPinLocation} pinTarget={pinTarget} />
 
-      {/* Top Bar */}
+      {/* Top Bar with Personalized Customer Greeting */}
       <View style={styles.topBar}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <TouchableOpacity
@@ -634,11 +799,24 @@ export default function CustomerDashboard({ navigation }: any) {
             <Ionicons name="menu" size={24} color="#1a1a2e" />
           </TouchableOpacity>
           <View style={styles.appBrand}>
+            <Ionicons name="car-sport" size={16} color="#fff" style={{ marginRight: 5 }} />
             <Text style={styles.brandText}>DRIVEMATE</Text>
           </View>
         </View>
-        <TouchableOpacity style={styles.logoutBtn} onPress={() => logout(navigation)}>
-          <Text style={styles.logoutText}>Log Out</Text>
+
+        {/* Personalized Profile Pill */}
+        <TouchableOpacity
+          style={styles.profilePill}
+          onPress={() => navigation.navigate('Profile')}
+          activeOpacity={0.8}
+        >
+          <View style={styles.profileAvatarMini}>
+            <Text style={styles.avatarMiniText}>{initialLetter}</Text>
+          </View>
+          <Text style={styles.profilePillText} numberOfLines={1}>
+            Hi, {firstName}
+          </Text>
+          <Ionicons name="chevron-forward" size={13} color="#888" />
         </TouchableOpacity>
       </View>
 
@@ -1001,4 +1179,142 @@ const styles = StyleSheet.create({
   tripItem: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
   tripIcon: { fontSize: 16 },
   tripText: { fontSize: 13, fontWeight: '600', color: '#333' },
+
+  // In-Ride Top Bar & Support
+  rideIdTopBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  rideIdTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.25)',
+  },
+  rideIdTagLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#8b5cf6',
+    marginRight: 4,
+  },
+  rideIdTagText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#1a1a2e',
+    letterSpacing: 0.5,
+  },
+  inRideSupportBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#8b5cf6',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 5,
+    elevation: 2,
+    shadowColor: '#8b5cf6',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  inRideSupportBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  waitTimerBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff0f5',
+    borderWidth: 1,
+    borderColor: '#f72585',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 12,
+    marginBottom: 12,
+    gap: 8,
+  },
+  waitTimerBoxExpired: {
+    backgroundColor: '#ffebee',
+    borderColor: '#e63946',
+  },
+  waitTimerText: {
+    fontSize: 13,
+    color: '#1a1a2e',
+    fontWeight: '600',
+  },
+  waitTimerBold: {
+    fontWeight: '800',
+    color: '#f72585',
+  },
+  waitTimerExpiredText: {
+    fontSize: 12,
+    color: '#e63946',
+    fontWeight: '700',
+  },
+  // Profile Pill & Quick Destination Chips Styles
+  profilePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    paddingLeft: 4,
+    paddingRight: 10,
+    paddingVertical: 4,
+    borderRadius: 24,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    gap: 6,
+    maxWidth: 160,
+  },
+  profileAvatarMini: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f72585',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarMiniText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  profilePillText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#1a1a2e',
+    flexShrink: 1,
+  },
+  quickChipsScroll: {
+    marginTop: 4,
+    marginBottom: 14,
+  },
+  quickChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f4f5f7',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    marginRight: 8,
+    gap: 5,
+  },
+  quickChipEmoji: {
+    fontSize: 13,
+  },
+  quickChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#374151',
+  },
 });

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { 
   IndianRupee, 
   ArrowUpRight, 
@@ -7,24 +8,67 @@ import {
   Building2, 
   Eye, 
   Download,
-  CheckCircle2
+  CheckCircle2,
+  RefreshCw
 } from 'lucide-react';
 import { DataTable } from '../../../components/common/DataTable';
 import { StatusPill } from '../../../components/common/StatusPill';
 import { DetailModal } from '../../../components/common/DetailModal';
 import { QuickActionBtn } from '../../../components/common/QuickActionBtn';
 
-const MOCK_TRANSACTIONS = [
-  { id: 'TXN-8801', user: 'Krishna Kanth', userType: 'Customer', type: 'credit', amount: 500.00, currency: 'INR', description: 'Wallet top-up via UPI Razorpay', referenceId: 'pay_Oa912Kks81', date: '25 Oct 2026, 11:05 AM', status: 'completed' },
-  { id: 'TXN-8802', user: 'Pooja Hegde', userType: 'Customer', type: 'debit', amount: 142.50, currency: 'INR', description: 'Ride payment: RD-9021', referenceId: 'RD-9021', date: '25 Oct 2026, 10:48 AM', status: 'completed' },
-  { id: 'TXN-8803', user: 'Suresh Kumar', userType: 'Rider', type: 'credit', amount: 114.00, currency: 'INR', description: 'Driver earnings payout: RD-9021 (80%)', referenceId: 'RD-9021', date: '25 Oct 2026, 10:48 AM', status: 'completed' },
-  { id: 'TXN-8804', user: 'Manjunath Reddy', userType: 'Rider', type: 'debit', amount: 3000.00, currency: 'INR', description: 'Bank Payout withdrawal to HDFC Bank', referenceId: 'PAY-902', date: '25 Oct 2026, 09:12 AM', status: 'completed' },
-  { id: 'TXN-8805', user: 'Ananya Roy', userType: 'Customer', type: 'credit', amount: 200.00, currency: 'INR', description: 'Dispute refund credited by Support', referenceId: 'TCK-8091', date: '24 Oct 2026, 05:30 PM', status: 'completed' },
-];
-
 export function FinancePayoutsView() {
-  const [transactions] = useState(MOCK_TRANSACTIONS);
+  const [transactions, setTransactions] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [selectedTxn, setSelectedTxn] = useState(null);
+
+  const fetchTransactions = async () => {
+    setLoading(true);
+    const token = sessionStorage.getItem('vlt_master_token');
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+    try {
+      const res = await axios.get(`${API_URL}/finance/ledger`, {
+        headers: token ? { 'x-auth-token': token } : {}
+      });
+      if (res.data?.data) {
+        setTransactions(res.data.data);
+      } else {
+        setTransactions([]);
+      }
+    } catch (err) {
+      console.warn('Finance ledger endpoint error, trying disbursements fallback:', err);
+      try {
+        const fallbackRes = await axios.get(`${API_URL}/finance/disbursements`, {
+          headers: token ? { 'x-auth-token': token } : {}
+        });
+        if (fallbackRes.data?.data) {
+          const mapped = fallbackRes.data.data.map(d => ({
+            id: `TXN-${d.id.slice(-6).toUpperCase()}`,
+            user: d.driverName || 'Driver Partner',
+            userType: 'Rider',
+            type: 'debit',
+            amount: Number(d.amount),
+            currency: 'INR',
+            description: `Driver payout to ${d.bankName} (${d.accountNumberMasked})`,
+            referenceId: d.payoutRef || d.id,
+            date: new Date(d.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
+            status: d.status?.toLowerCase() || 'pending'
+          }));
+          setTransactions(mapped);
+        } else {
+          setTransactions([]);
+        }
+      } catch (fallbackErr) {
+        setTransactions([]);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTransactions();
+  }, []);
 
   const columns = [
     { header: 'Transaction ID', accessor: 'id', render: r => <span className="font-mono text-xs font-bold text-teal-400">{r.id}</span> },
@@ -52,7 +96,7 @@ export function FinancePayoutsView() {
       header: 'Amount',
       render: r => (
         <span className={`font-extrabold text-sm ${r.type === 'credit' ? 'text-emerald-400' : 'text-white'}`}>
-          {r.type === 'credit' ? '+' : '-'}₹{r.amount.toFixed(2)}
+          {r.type === 'credit' ? '+' : '-'}₹{typeof r.amount === 'number' ? r.amount.toFixed(2) : r.amount}
         </span>
       )
     },
@@ -84,11 +128,19 @@ export function FinancePayoutsView() {
             Complete record of ride debits, driver commissions, and wallet top-ups
           </p>
         </div>
+
+        <button
+          onClick={fetchTransactions}
+          className="self-start sm:self-auto flex items-center gap-2 px-3.5 py-2 rounded-xl bg-neutral-900 border border-neutral-800 hover:border-neutral-700 text-xs font-medium text-neutral-300 hover:text-white transition-all"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+          Refresh Ledger
+        </button>
       </div>
 
       <DataTable
         title="Transactions Ledger"
-        subtitle="All credits and debits posted to user & driver accounts"
+        subtitle="Live ledger data fetched from backend PostgreSQL transaction records"
         columns={columns}
         data={transactions}
         searchPlaceholder="Search transactions by ID, user, reference, or description..."

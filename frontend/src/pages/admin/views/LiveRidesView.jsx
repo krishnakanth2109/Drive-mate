@@ -17,80 +17,6 @@ import { StatusPill } from '../../../components/common/StatusPill';
 import { DetailModal } from '../../../components/common/DetailModal';
 import { QuickActionBtn } from '../../../components/common/QuickActionBtn';
 
-const MOCK_RIDES_FALLBACK = [
-  {
-    id: 'RD-9021',
-    customer: { name: 'Pooja Hegde', phone: '+91 98845 22109' },
-    rider: { name: 'Suresh Kumar', phone: '+91 98801 33419', vehicleType: 'bike' },
-    pickupAddress: 'Indiranagar Metro Station, 100ft Road',
-    dropAddress: 'Embassy GolfLinks Business Park, Domlur',
-    status: 'ongoing',
-    vehicleType: 'bike',
-    fare: 142.50,
-    distance: 4.8,
-    duration: 16,
-    otp: '4481',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'RD-9020',
-    customer: { name: 'Ananya Roy', phone: '+91 94432 88712' },
-    rider: { name: 'Manjunath Reddy', phone: '+91 97412 88901', vehicleType: 'auto' },
-    pickupAddress: 'Koramangala 5th Block Club',
-    dropAddress: 'HSR Layout BDA Complex',
-    status: 'accepted',
-    vehicleType: 'auto',
-    fare: 95.00,
-    distance: 3.2,
-    duration: 12,
-    otp: '2819',
-    createdAt: new Date(Date.now() - 600000).toISOString()
-  },
-  {
-    id: 'RD-9019',
-    customer: { name: 'Vikram Joshi', phone: '+91 91122 33445' },
-    rider: null,
-    pickupAddress: 'MG Road Trinity Circle',
-    dropAddress: 'Whitefield ITPL Main Gate',
-    status: 'pending',
-    vehicleType: 'car',
-    fare: 310.00,
-    distance: 14.5,
-    duration: 38,
-    otp: '9102',
-    createdAt: new Date(Date.now() - 1200000).toISOString()
-  },
-  {
-    id: 'RD-9018',
-    customer: { name: 'Rahul Varma', phone: '+91 95544 33221' },
-    rider: { name: 'Basavaraj Patil', phone: '+91 96112 44321', vehicleType: 'bike' },
-    pickupAddress: 'Bannerghatta National Park Road',
-    dropAddress: 'Jayadeva Hospital Junction',
-    status: 'completed',
-    vehicleType: 'bike',
-    fare: 112.00,
-    distance: 6.1,
-    duration: 22,
-    otp: '5561',
-    createdAt: new Date(Date.now() - 3600000).toISOString()
-  },
-  {
-    id: 'RD-9017',
-    customer: { name: 'Kavitha Nair', phone: '+91 98877 66554' },
-    rider: { name: 'Ravi Teja', phone: '+91 94488 12390', vehicleType: 'bike' },
-    pickupAddress: 'Hebbal Flyover Bus Stop',
-    dropAddress: 'Yelahanka Satellite Town',
-    status: 'cancelled',
-    vehicleType: 'bike',
-    fare: 80.00,
-    distance: 5.4,
-    duration: 18,
-    otp: '3310',
-    cancellationReason: 'Driver vehicle flat tire',
-    createdAt: new Date(Date.now() - 7200000).toISOString()
-  }
-];
-
 export function LiveRidesView() {
   const [rides, setRides] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -105,13 +31,11 @@ export function LiveRidesView() {
       const res = await axios.get(`${API_URL}/admin/recent-rides`, {
         headers: token ? { 'x-auth-token': token } : {}
       });
-      if (res.data?.data && res.data.data.length > 0) {
-        setRides(res.data.data);
-      } else {
-        setRides(MOCK_RIDES_FALLBACK);
-      }
+      const data = res.data?.data || res.data || [];
+      setRides(Array.isArray(data) ? data : []);
     } catch (err) {
-      setRides(MOCK_RIDES_FALLBACK);
+      console.error('Failed to fetch live rides from backend:', err);
+      setRides([]);
     } finally {
       setLoading(false);
     }

@@ -239,3 +239,76 @@ export const getFinanceMetrics = asyncHandler(async (req: AuthenticatedRequest, 
     )
   );
 });
+
+/**
+ * Get comprehensive financial ledger transactions
+ * Accessible by: Finance Admin, Financer, Super Admin
+ */
+export const getFinancialLedger = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const { type, search } = req.query;
+
+  const whereClause: any = {};
+  if (type && type !== 'all') {
+    whereClause.direction = String(type).toUpperCase();
+  }
+
+  // 1. Fetch from wallet transactions
+  const walletTxns = await prisma.walletTransaction.findMany({
+    where: whereClause,
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+    include: {
+      wallet: {
+        include: {
+          customer: { select: { id: true, name: true, phone: true } },
+          rider: { select: { id: true, name: true, phone: true } },
+        },
+      },
+    },
+  });
+
+  if (walletTxns.length > 0) {
+    const formatted = walletTxns.map((t) => ({
+      id: `TXN-${t.id.slice(-6).toUpperCase()}`,
+      fullId: t.id,
+      user: t.wallet?.customer?.name || t.wallet?.rider?.name || 'DriveMate User',
+      userType: t.wallet?.userType === 'rider' ? 'Rider' : 'Customer',
+      type: t.direction.toLowerCase(),
+      amount: Number(t.amount),
+      currency: t.currency || 'INR',
+      description: t.description || `${t.type} transaction`,
+      referenceId: t.referenceId || `REF-${t.id.slice(-6)}`,
+      date: new Date(t.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
+      status: t.status.toLowerCase() === 'success' ? 'completed' : t.status.toLowerCase(),
+    }));
+
+    return res.status(200).json(new ApiResponse(200, formatted, 'Financial ledger fetched successfully'));
+  }
+
+  // 2. Fallback to disbursements ledger if no wallet transactions logged yet
+  const disbursements = await prisma.disbursement.findMany({
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+    include: {
+      batch: true,
+      rider: { select: { id: true, name: true, phone: true } },
+    },
+  });
+
+  const formattedDisbursements = disbursements.map((d) => ({
+    id: `TXN-${d.id.slice(-6).toUpperCase()}`,
+    fullId: d.id,
+    user: d.driverName || d.rider?.name || 'Driver Partner',
+    userType: 'Rider',
+    type: 'debit',
+    amount: Number(d.amount),
+    currency: 'INR',
+    description: `Driver payout transfer to ${d.bankName} (${d.accountNumberMasked})`,
+    referenceId: d.payoutRef || d.id,
+    date: new Date(d.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
+    status: d.status.toLowerCase(),
+  }));
+
+  res.status(200).json(new ApiResponse(200, formattedDisbursements, 'Financial ledger fetched successfully'));
+});
+

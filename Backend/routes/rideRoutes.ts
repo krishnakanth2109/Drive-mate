@@ -12,6 +12,7 @@ import {
   getRiderHistory,
   getRiderActiveRide,
   getRideById,
+  getRideWaitTime,
 } from '../controllers/rideController.js';
 
 const router: Router = express.Router();
@@ -20,6 +21,10 @@ const router: Router = express.Router();
 router.get('/autocomplete', auth, autocomplete);
 router.get('/place-details', auth, getPlaceDetailsById);
 router.get('/reverse-geocode', auth, reverseGeocode);
+
+// Wait Time
+router.get('/wait-time/:id', auth, getRideWaitTime);
+router.get('/:id/wait-time', auth, getRideWaitTime);
 
 // Ride booking & lifecycle
 router.post('/estimate', auth, estimateRide);

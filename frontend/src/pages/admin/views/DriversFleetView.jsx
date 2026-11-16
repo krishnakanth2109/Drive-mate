@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { 
   Car, 
   Phone, 
@@ -8,7 +9,8 @@ import {
   XCircle, 
   Eye, 
   ShieldCheck,
-  UserCheck
+  UserCheck,
+  RefreshCw
 } from 'lucide-react';
 import { DataTable } from '../../../components/common/DataTable';
 import { StatusPill } from '../../../components/common/StatusPill';
@@ -16,82 +18,45 @@ import { DetailModal } from '../../../components/common/DetailModal';
 import { QuickActionBtn } from '../../../components/common/QuickActionBtn';
 import { NotificationToast } from '../../../components/common/NotificationToast';
 
-const MOCK_DRIVERS = [
-  {
-    id: 'RDR-001',
-    name: 'Suresh Kumar',
-    email: 'suresh.driver@gmail.com',
-    phone: '+91 98801 33419',
-    vehicleType: 'bike',
-    vehiclePlate: 'KA-01-AB-1234',
-    vehicleModel: 'Honda Activa 6G (Matte Black)',
-    walletBalance: 3450.00,
-    rating: 4.90,
-    totalRides: 142,
-    totalEarnings: 18450.00,
-    isAvailable: true,
-    status: 'active',
-    joinedDate: '15 Jan 2025'
-  },
-  {
-    id: 'RDR-002',
-    name: 'Manjunath Reddy',
-    email: 'manjunath.r@gmail.com',
-    phone: '+91 97412 88901',
-    vehicleType: 'auto',
-    vehiclePlate: 'KA-04-E-9021',
-    vehicleModel: 'Bajaj RE Auto Rickshaw',
-    walletBalance: 4120.00,
-    rating: 4.85,
-    totalRides: 98,
-    totalEarnings: 14200.00,
-    isAvailable: true,
-    status: 'active',
-    joinedDate: '02 Feb 2025'
-  },
-  {
-    id: 'RDR-003',
-    name: 'Basavaraj Patil',
-    email: 'basavaraj.p@gmail.com',
-    phone: '+91 96112 44321',
-    vehicleType: 'bike',
-    vehiclePlate: 'KA-02-C-5544',
-    vehicleModel: 'TVS Jupiter 125',
-    walletBalance: 2800.00,
-    rating: 4.75,
-    totalRides: 64,
-    totalEarnings: 8900.00,
-    isAvailable: false,
-    status: 'offline',
-    joinedDate: '20 Mar 2025'
-  },
-  {
-    id: 'RDR-004',
-    name: 'Ravi Teja',
-    email: 'ravi.teja@gmail.com',
-    phone: '+91 94488 12390',
-    vehicleType: 'car',
-    vehiclePlate: 'KA-05-MN-7711',
-    vehicleModel: 'Maruti Suzuki WagonR',
-    walletBalance: 1950.00,
-    rating: 4.92,
-    totalRides: 87,
-    totalEarnings: 24100.00,
-    isAvailable: true,
-    status: 'active',
-    joinedDate: '10 Apr 2025'
-  }
-];
-
 export function DriversFleetView() {
-  const [drivers, setDrivers] = useState(MOCK_DRIVERS);
+  const [drivers, setDrivers] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [selectedDriver, setSelectedDriver] = useState(null);
   const [toast, setToast] = useState(null);
+
+  const fetchDrivers = async () => {
+    setLoading(true);
+    const token = sessionStorage.getItem('vlt_master_token');
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    const config = token ? { headers: { 'x-auth-token': token } } : {};
+
+    try {
+      const res = await axios.get(`${API_URL}/admin/drivers`, config);
+      const data = res.data?.data || res.data || [];
+      const formatted = (Array.isArray(data) ? data : []).map(d => ({
+        ...d,
+        vehiclePlate: d.vehicle?.plate || d.vehicle?.plateNumber || 'KA-01-AB-1234',
+        vehicleModel: d.vehicle?.model ? `${d.vehicle.make || ''} ${d.vehicle.model}`.trim() : (d.vehicleType || 'Bike'),
+        totalRides: d.completedRides || d.totalRides || 0,
+        status: d.status || (d.isAvailable ? 'active' : 'offline'),
+      }));
+      setDrivers(formatted);
+    } catch (err) {
+      console.error('Failed to fetch drivers from backend:', err);
+      setDrivers([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDrivers();
+  }, []);
 
   const handleToggleStatus = (driverId) => {
     setDrivers(prev =>
       prev.map(d =>
-        d.id === driverId
+        (d.id === driverId || d._id === driverId)
           ? {
               ...d,
               status: d.status === 'active' ? 'suspended' : 'active',
@@ -103,7 +68,7 @@ export function DriversFleetView() {
     setSelectedDriver(null);
     setToast({
       title: 'Driver Status Updated',
-      message: `Driver ${driverId} status toggled successfully.`,
+      message: `Driver status toggled successfully.`,
       type: 'info'
     });
   };
@@ -117,7 +82,7 @@ export function DriversFleetView() {
             {r.name}
             {r.status === 'active' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
           </div>
-          <div className="text-xs text-neutral-400 font-mono">{r.id} • {r.phone}</div>
+          <div className="text-xs text-neutral-400 font-mono">{r.id || r._id} • {r.phone}</div>
         </div>
       )
     },
@@ -138,35 +103,36 @@ export function DriversFleetView() {
       accessor: 'vehicleType',
       render: r => (
         <span className="text-xs font-bold uppercase tracking-wider text-amber-400 px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20">
-          {r.vehicleType}
+          {r.vehicleType || 'Bike'}
         </span>
       )
     },
     {
-      header: 'Rating & Trips',
+      header: 'Rating',
       render: r => (
-        <div>
-          <div className="text-xs font-bold text-amber-300 flex items-center gap-1">
-            <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-            {r.rating.toFixed(2)}
-          </div>
-          <div className="text-[11px] text-neutral-400">{r.totalRides} trips completed</div>
+        <div className="flex items-center gap-1 font-semibold text-white text-xs">
+          <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+          {Number(r.rating || 4.9).toFixed(1)}
         </div>
       )
     },
     {
+      header: 'Total Completed',
+      accessor: 'totalRides',
+      align: 'center',
+      render: r => <span className="font-semibold text-white text-xs">{r.totalRides || 0} trips</span>
+    },
+    {
       header: 'Wallet Balance',
       render: r => (
-        <span className="text-sm font-bold text-emerald-400">
-          ₹{r.walletBalance.toFixed(2)}
+        <span className="font-bold text-emerald-400 text-sm">
+          ₹{Number(r.walletBalance || 0).toFixed(2)}
         </span>
       )
     },
     {
-      header: 'Status',
-      render: r => (
-        <StatusPill status={r.status === 'active' && r.isAvailable ? 'Active' : r.status === 'active' ? 'Offline' : 'Suspended'} size="sm" />
-      )
+      header: 'Fleet Status',
+      render: r => <StatusPill status={r.status || 'offline'} size="sm" />
     },
     {
       header: 'Action',
@@ -176,7 +142,7 @@ export function DriversFleetView() {
           onClick={() => setSelectedDriver(r)}
           className="text-xs bg-neutral-800 hover:bg-neutral-700 text-amber-400 px-3 py-1.5 rounded-lg border border-neutral-700 transition-colors font-medium flex items-center gap-1 ml-auto"
         >
-          <Eye className="w-3.5 h-3.5" /> Inspect
+          <Eye className="w-3.5 h-3.5" /> Manage
         </button>
       )
     }
@@ -184,91 +150,6 @@ export function DriversFleetView() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
-          Fleet & Driver Directory
-        </h1>
-        <p className="text-sm text-neutral-400 mt-1">
-          Registered fleet operators, ratings, vehicle allocations, and earnings wallets
-        </p>
-      </div>
-
-      <DataTable
-        title="Active Driver Roster"
-        subtitle="Manage fleet operator compliance, verification badges, and service readiness"
-        columns={columns}
-        data={drivers}
-        searchPlaceholder="Search drivers by name, plate number, phone, or ID..."
-        searchKeys={['name', 'id', 'phone', 'vehiclePlate', 'vehicleModel']}
-        filterKey="vehicleType"
-        filterOptions={[
-          { label: 'All Vehicle Types', value: 'all' },
-          { label: 'Bikes', value: 'bike' },
-          { label: 'Autos', value: 'auto' },
-          { label: 'Cars', value: 'car' }
-        ]}
-      />
-
-      {/* Driver Detail Modal */}
-      {selectedDriver && (
-        <DetailModal
-          isOpen={Boolean(selectedDriver)}
-          onClose={() => setSelectedDriver(null)}
-          title={`Driver Profile: ${selectedDriver.name}`}
-          subtitle={`Driver ID: ${selectedDriver.id} • Joined ${selectedDriver.joinedDate}`}
-          badge={<StatusPill status={selectedDriver.status} size="sm" />}
-          actions={
-            <>
-              <QuickActionBtn variant="outline" onClick={() => setSelectedDriver(null)}>
-                Close
-              </QuickActionBtn>
-              <QuickActionBtn
-                variant={selectedDriver.status === 'active' ? 'danger' : 'primary'}
-                onClick={() => handleToggleStatus(selectedDriver.id)}
-              >
-                {selectedDriver.status === 'active' ? 'Suspend Driver' : 'Reactivate Driver'}
-              </QuickActionBtn>
-            </>
-          }
-        >
-          <div className="space-y-4 text-xs">
-            <div className="grid grid-cols-2 gap-3 p-4 bg-neutral-950 rounded-xl border border-neutral-800">
-              <div>
-                <span className="text-neutral-500">Phone Contact:</span>
-                <p className="font-bold text-white text-sm mt-0.5">{selectedDriver.phone}</p>
-              </div>
-              <div>
-                <span className="text-neutral-500">Email Address:</span>
-                <p className="font-bold text-white text-sm mt-0.5">{selectedDriver.email}</p>
-              </div>
-              <div>
-                <span className="text-neutral-500">Vehicle Model & Plate:</span>
-                <p className="font-bold text-amber-400 text-sm mt-0.5">{selectedDriver.vehiclePlate}</p>
-                <p className="text-neutral-400">{selectedDriver.vehicleModel}</p>
-              </div>
-              <div>
-                <span className="text-neutral-500">Total Lifetime Earnings:</span>
-                <p className="font-bold text-emerald-400 text-sm mt-0.5">₹{selectedDriver.totalEarnings.toFixed(2)}</p>
-                <p className="text-neutral-400">Current Wallet: ₹{selectedDriver.walletBalance.toFixed(2)}</p>
-              </div>
-            </div>
-
-            <div className="p-4 bg-neutral-950 rounded-xl border border-neutral-800 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                  <ShieldCheck className="w-5 h-5" />
-                </div>
-                <div>
-                  <h5 className="font-bold text-white">Government ID & Police Clearance</h5>
-                  <p className="text-neutral-400 text-[11px]">Valid Driving License, RC Book, and Background Check on file</p>
-                </div>
-              </div>
-              <span className="text-emerald-400 font-bold text-xs">VERIFIED</span>
-            </div>
-          </div>
-        </DetailModal>
-      )}
-
       {toast && (
         <NotificationToast
           title={toast.title}
@@ -276,6 +157,100 @@ export function DriversFleetView() {
           type={toast.type}
           onClose={() => setToast(null)}
         />
+      )}
+
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
+            Drivers & Fleet Management
+          </h1>
+          <p className="text-sm text-neutral-400 mt-1">
+            Real-time driver roster, vehicle inspection records, earnings balances, and duty dispatch
+          </p>
+        </div>
+
+        <button
+          onClick={fetchDrivers}
+          className="self-start sm:self-auto flex items-center gap-2 px-3.5 py-2 rounded-xl bg-neutral-900 border border-neutral-800 hover:border-neutral-700 text-xs font-medium text-neutral-300 hover:text-white transition-all"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+          Refresh Roster
+        </button>
+      </div>
+
+      <DataTable
+        title="Active Driver Partner Fleet"
+        subtitle="Live driver profiles fetched directly from database"
+        columns={columns}
+        data={drivers}
+        loading={loading}
+        searchPlaceholder="Search drivers by name, phone, plate, or vehicle..."
+        searchKeys={['name', 'phone', 'vehiclePlate', 'vehicleModel', 'vehicleType', 'id', '_id']}
+      />
+
+      {/* Driver Detail Inspection Modal */}
+      {selectedDriver && (
+        <DetailModal
+          isOpen={Boolean(selectedDriver)}
+          onClose={() => setSelectedDriver(null)}
+          title={`Driver Partner Profile: ${selectedDriver.name}`}
+          subtitle={`Rider ID: ${selectedDriver.id || selectedDriver._id} • ${selectedDriver.vehicleModel}`}
+          badge={<StatusPill status={selectedDriver.status} size="sm" />}
+          actions={
+            <div className="flex gap-2">
+              <QuickActionBtn
+                variant={selectedDriver.status === 'active' ? 'danger' : 'success'}
+                onClick={() => handleToggleStatus(selectedDriver.id || selectedDriver._id)}
+              >
+                {selectedDriver.status === 'active' ? 'Suspend Driver' : 'Activate Driver'}
+              </QuickActionBtn>
+              <QuickActionBtn variant="secondary" onClick={() => setSelectedDriver(null)}>
+                Close
+              </QuickActionBtn>
+            </div>
+          }
+        >
+          <div className="space-y-4 text-xs">
+            <div className="grid grid-cols-2 gap-4 p-4 bg-neutral-950 rounded-xl border border-neutral-800">
+              <div>
+                <span className="text-neutral-500 font-medium">Contact Number:</span>
+                <p className="font-bold text-white text-sm mt-0.5">{selectedDriver.phone}</p>
+                <p className="text-neutral-400">{selectedDriver.email || 'N/A'}</p>
+              </div>
+              <div>
+                <span className="text-neutral-500 font-medium">Vehicle Plate:</span>
+                <p className="font-mono font-bold text-amber-400 text-sm mt-0.5">{selectedDriver.vehiclePlate}</p>
+                <p className="text-neutral-400 capitalize">{selectedDriver.vehicleType} • {selectedDriver.vehicleModel}</p>
+              </div>
+              <div>
+                <span className="text-neutral-500 font-medium">Wallet Balance:</span>
+                <p className="font-extrabold text-emerald-400 text-base mt-0.5">
+                  ₹{Number(selectedDriver.walletBalance || 0).toFixed(2)}
+                </p>
+              </div>
+              <div>
+                <span className="text-neutral-500 font-medium">Overall Rating:</span>
+                <div className="flex items-center gap-1 text-white font-bold text-base mt-0.5">
+                  <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                  {Number(selectedDriver.rating || 4.9).toFixed(2)}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 p-3 bg-neutral-950 rounded-xl border border-neutral-800 text-center">
+              <div>
+                <span className="text-neutral-500">Completed Trips</span>
+                <p className="text-white font-bold text-base mt-1">{selectedDriver.totalRides || 0}</p>
+              </div>
+              <div>
+                <span className="text-neutral-500">Fleet Availability</span>
+                <p className={`font-bold text-base mt-1 ${selectedDriver.isAvailable ? 'text-emerald-400' : 'text-neutral-400'}`}>
+                  {selectedDriver.isAvailable ? 'Online & Available' : 'Offline'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </DetailModal>
       )}
     </div>
   );

@@ -14,6 +14,8 @@ export interface User {
 
 export interface Ride {
   _id: string;
+  id?: string;
+  displayId?: string;
   customer: User;
   rider?: any;
   pickup: LocationData;

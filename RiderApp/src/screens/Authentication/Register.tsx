@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
 
 export default function RegisterScreen({ navigation }: any) {
@@ -20,8 +21,23 @@ export default function RegisterScreen({ navigation }: any) {
         phone: phone.trim(),
         password: password.trim()
       });
-      Alert.alert('Success', 'Account created! Please login.');
-      navigation.navigate('Login');
+
+      // Save credentials for immediate login auto-fill
+      await AsyncStorage.setItem(
+        'rider_saved_credentials',
+        JSON.stringify({
+          email: email.toLowerCase().trim(),
+          password: password.trim(),
+          savedAt: Date.now(),
+        })
+      );
+      await AsyncStorage.setItem('remember_rider', 'true');
+
+      Alert.alert('Success', 'Account created! Credentials saved for quick login.');
+      navigation.navigate('Login', {
+        prefillEmail: email.toLowerCase().trim(),
+        prefillPassword: password.trim(),
+      });
     } catch (err: any) {
       Alert.alert('Error', err.response?.data?.message || 'Registration failed');
     } finally {

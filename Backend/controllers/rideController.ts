@@ -16,6 +16,11 @@ import { AuthenticatedRequest } from '../middleware/auth.js';
 
 const generateId = (): string => crypto.randomBytes(12).toString('hex');
 
+export const formatRideDisplayId = (id?: string | null): string => {
+  if (!id) return 'DM-000000';
+  return `DM-${id.slice(-6).toUpperCase()}`;
+};
+
 const VEHICLE_PRICING: Record<string, { label: string; emoji: string; base: number; perKm: number; maxKm: number }> = {
   bike: { label: 'Bike', emoji: '🏍️', base: 20, perKm: 10, maxKm: 40 },
   scooty: { label: 'Scooty', emoji: '🛵', base: 25, perKm: 10, maxKm: 40 },
@@ -254,6 +259,7 @@ export const createRide = asyncHandler(async (req: AuthenticatedRequest, res: Re
   const clientRidePayload = {
     ...savedRide,
     _id: savedRide.id,
+    displayId: formatRideDisplayId(savedRide.id),
     customer: savedRide.customer ? { ...savedRide.customer, _id: savedRide.customer.id } : null,
     pickup: {
       name: savedRide.pickupPlaceName,
@@ -333,6 +339,7 @@ export const acceptRide = asyncHandler(async (req: AuthenticatedRequest, res: Re
   const clientRide = {
     ...updatedRide,
     _id: updatedRide.id,
+    displayId: formatRideDisplayId(updatedRide.id),
     customer: updatedRide.customerId,
     rider: updatedRide.riderId,
     pickup: {
@@ -373,8 +380,74 @@ export const acceptRide = asyncHandler(async (req: AuthenticatedRequest, res: Re
   res.status(200).json(new ApiResponse(200, { ride: clientRide }, 'Ride accepted successfully'));
 });
 
+export const FREE_WAIT_MINUTES = 3;
+export const WAIT_CHARGE_PER_MIN = 2; // ₹2 per minute after 3 minutes free
+
 // ---------------------------------------------------------------------------
-// 7. Update Ride Status (arrived -> ongoing -> completed)
+// 7. Get Live Ride Wait Time (Elapsed, Free Remaining, Billable Charges)
+// ---------------------------------------------------------------------------
+export const getRideWaitTime = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const rideId = String(req.params.id || req.params.rideId);
+  const ride = await prisma.ride.findUnique({ where: { id: rideId } });
+  if (!ride) throw new ApiError(404, 'Ride not found');
+
+  if (!ride.arrivedAt) {
+    return res.status(200).json(
+      new ApiResponse(200, {
+        rideId: ride.id,
+        status: ride.status,
+        hasArrived: false,
+        arrivedAt: null,
+        startedAt: null,
+        freeWaitMinutes: FREE_WAIT_MINUTES,
+        freeWaitSeconds: FREE_WAIT_MINUTES * 60,
+        elapsedWaitSeconds: 0,
+        freeWaitRemainingSeconds: FREE_WAIT_MINUTES * 60,
+        isFreeWaitExpired: false,
+        billableWaitMinutes: 0,
+        currentWaitCharges: 0,
+        ratePerMinute: WAIT_CHARGE_PER_MIN,
+      }, 'Driver has not arrived yet')
+    );
+  }
+
+  const startTime = new Date(ride.arrivedAt).getTime();
+  const endTime = ride.startedAt ? new Date(ride.startedAt).getTime() : Date.now();
+  const elapsedMs = Math.max(0, endTime - startTime);
+  const elapsedSeconds = Math.floor(elapsedMs / 1000);
+  const freeWaitMs = FREE_WAIT_MINUTES * 60 * 1000;
+  const isFreeWaitExpired = elapsedMs > freeWaitMs;
+  const freeWaitRemainingSeconds = Math.max(0, Math.floor((freeWaitMs - elapsedMs) / 1000));
+
+  const elapsedMinutes = Math.floor(elapsedMs / 60000);
+  const billableWaitMinutes = Math.max(0, elapsedMinutes - FREE_WAIT_MINUTES);
+  const currentWaitCharges = billableWaitMinutes * WAIT_CHARGE_PER_MIN;
+
+  res.status(200).json(
+    new ApiResponse(200, {
+      rideId: ride.id,
+      status: ride.status,
+      hasArrived: true,
+      arrivedAt: ride.arrivedAt,
+      startedAt: ride.startedAt,
+      freeWaitMinutes: FREE_WAIT_MINUTES,
+      freeWaitSeconds: FREE_WAIT_MINUTES * 60,
+      freeWaitExpiresAt: new Date(startTime + freeWaitMs).toISOString(),
+      elapsedWaitSeconds: elapsedSeconds,
+      elapsedWaitMinutes: elapsedMinutes,
+      freeWaitRemainingSeconds,
+      isFreeWaitExpired,
+      billableWaitMinutes,
+      currentWaitCharges,
+      ratePerMinute: WAIT_CHARGE_PER_MIN,
+      baseFare: Math.max(0, Number(ride.fare) - Number(ride.waitCharges || 0)),
+      totalFare: Number(ride.fare),
+    }, 'Wait time details retrieved')
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 8. Update Ride Status (arrived -> ongoing -> completed)
 // ---------------------------------------------------------------------------
 export const updateRideStatus = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { rideId, status, otp } = req.body;
@@ -393,13 +466,14 @@ export const updateRideStatus = asyncHandler(async (req: AuthenticatedRequest, r
       throw new ApiError(400, 'Invalid OTP');
     }
     startedAt = new Date();
-    // Calculate wait time charges if waiting exceeded 3 mins
+
+    // Calculate wait time charges after 3-minute free window
     if (ride.arrivedAt) {
-      const waitTimeMs = Date.now() - new Date(ride.arrivedAt).getTime();
-      const waitTimeMins = Math.floor(waitTimeMs / 60000);
-      if (waitTimeMins > 3) {
-        const extraMins = waitTimeMins - 3;
-        waitCharges = extraMins * 2;
+      const waitTimeMs = Math.max(0, startedAt.getTime() - new Date(ride.arrivedAt).getTime());
+      const totalWaitMins = Math.floor(waitTimeMs / 60000);
+      if (totalWaitMins > FREE_WAIT_MINUTES) {
+        const extraMins = totalWaitMins - FREE_WAIT_MINUTES;
+        waitCharges = extraMins * WAIT_CHARGE_PER_MIN;
         fare += waitCharges;
       }
     }
@@ -407,6 +481,38 @@ export const updateRideStatus = asyncHandler(async (req: AuthenticatedRequest, r
 
   if (status === 'arrived') {
     arrivedAt = new Date();
+
+    // 3-Minute Background Timer:
+    // If the rider does not start the ride within 3 minutes of arrival,
+    // notify customer and driver that free wait time expired and wait charges apply.
+    setTimeout(async () => {
+      try {
+        const checkRide = await prisma.ride.findUnique({ where: { id: rideId } });
+        if (checkRide && checkRide.status === 'arrived') {
+          console.log(`[WaitTime] Free 3-minute waiting period expired for ride ${rideId}`);
+          if (req.io) {
+            const waitExpiredPayload = {
+              rideId,
+              status: 'arrived',
+              arrivedAt: checkRide.arrivedAt,
+              freeWaitMinutes: FREE_WAIT_MINUTES,
+              isFreeWaitExpired: true,
+              waitChargeRatePerMinute: WAIT_CHARGE_PER_MIN,
+              message: 'Free 3-minute wait period has ended. Waiting charges of ₹2/min now apply.',
+            };
+            req.io.to(`ride_${rideId}`).emit('wait_time_expired', waitExpiredPayload);
+            if (checkRide.customerId) {
+              req.io.to(checkRide.customerId).emit('wait_time_expired', waitExpiredPayload);
+            }
+            if (checkRide.riderId) {
+              req.io.to(checkRide.riderId).emit('wait_time_expired', waitExpiredPayload);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Wait timer check error:', err);
+      }
+    }, FREE_WAIT_MINUTES * 60 * 1000);
   }
 
   if (status === 'completed') {
@@ -428,6 +534,7 @@ export const updateRideStatus = asyncHandler(async (req: AuthenticatedRequest, r
   const clientRide = {
     ...updatedRide,
     _id: updatedRide.id,
+    displayId: formatRideDisplayId(updatedRide.id),
     customer: updatedRide.customerId,
     rider: updatedRide.riderId,
     pickup: {
@@ -444,8 +551,32 @@ export const updateRideStatus = asyncHandler(async (req: AuthenticatedRequest, r
     },
   };
 
+  const waitInfo = arrivedAt ? {
+    freeWaitMinutes: FREE_WAIT_MINUTES,
+    freeWaitSeconds: FREE_WAIT_MINUTES * 60,
+    freeWaitExpiresAt: new Date(new Date(arrivedAt).getTime() + FREE_WAIT_MINUTES * 60 * 1000).toISOString(),
+    waitChargeRatePerMinute: WAIT_CHARGE_PER_MIN,
+  } : null;
+
   if (req.io) {
-    req.io.to(`ride_${ride.id}`).emit('ride_status_update', { status, ride: clientRide });
+    req.io.to(`ride_${ride.id}`).emit('ride_status_update', {
+      status,
+      ride: clientRide,
+      waitInfo: status === 'arrived' ? waitInfo : undefined,
+    });
+
+    if (status === 'arrived' && waitInfo) {
+      req.io.to(`ride_${ride.id}`).emit('driver_arrived', {
+        ride: clientRide,
+        ...waitInfo,
+      });
+      if (ride.customerId) {
+        req.io.to(ride.customerId).emit('driver_arrived', {
+          ride: clientRide,
+          ...waitInfo,
+        });
+      }
+    }
   }
 
   if (status === 'completed' && ride.riderId) {
@@ -455,7 +586,7 @@ export const updateRideStatus = asyncHandler(async (req: AuthenticatedRequest, r
     });
   }
 
-  res.status(200).json(new ApiResponse(200, { ride: clientRide }, `Ride status updated to ${status}`));
+  res.status(200).json(new ApiResponse(200, { ride: clientRide, waitInfo }, `Ride status updated to ${status}`));
 });
 
 // ---------------------------------------------------------------------------
@@ -470,12 +601,25 @@ export const cancelRide = asyncHandler(async (req: AuthenticatedRequest, res: Re
     throw new ApiError(400, 'Cannot cancel this ride');
   }
 
+  let cancellationReason = reason || 'No reason provided';
+  let isRiderNoShow = false;
+
+  if (ride.status === 'arrived' && ride.arrivedAt) {
+    const elapsedMs = Date.now() - new Date(ride.arrivedAt).getTime();
+    if (elapsedMs >= FREE_WAIT_MINUTES * 60 * 1000) {
+      isRiderNoShow = true;
+      if (!reason) {
+        cancellationReason = `Rider did not show up within ${FREE_WAIT_MINUTES} minutes free wait time`;
+      }
+    }
+  }
+
   const updatedRide = await prisma.ride.update({
     where: { id: rideId },
     data: {
       status: 'cancelled',
-      cancellationReason: reason || 'No reason provided',
-      cancelledBy: req.user?.role || 'rider',
+      cancellationReason,
+      cancelledBy: isRiderNoShow ? 'rider_noshow' : (req.user?.role || 'rider'),
     },
   });
 
@@ -562,6 +706,7 @@ export const getRiderActiveRide = asyncHandler(async (req: AuthenticatedRequest,
   const clientRide = {
     ...activeRide,
     _id: activeRide.id,
+    displayId: formatRideDisplayId(activeRide.id),
     customer: activeRide.customer ? { ...activeRide.customer, _id: activeRide.customer.id } : null,
     pickup: { name: activeRide.pickupPlaceName, address: activeRide.pickupAddress, lat: activeRide.pickupLat, lng: activeRide.pickupLng },
     drop: { name: activeRide.dropPlaceName, address: activeRide.dropAddress, lat: activeRide.dropLat, lng: activeRide.dropLng },
@@ -585,6 +730,7 @@ export const getRideById = asyncHandler(async (req: AuthenticatedRequest, res: R
   const clientRide = {
     ...ride,
     _id: ride.id,
+    displayId: formatRideDisplayId(ride.id),
     customer: ride.customer ? { ...ride.customer, _id: ride.customer.id } : null,
     rider: ride.rider ? { ...ride.rider, _id: ride.rider.id } : null,
     pickup: { name: ride.pickupPlaceName, address: ride.pickupAddress, lat: ride.pickupLat, lng: ride.pickupLng },

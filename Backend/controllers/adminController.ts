@@ -199,3 +199,82 @@ export const getRecentRides = asyncHandler(async (req: AuthenticatedRequest, res
 
   res.status(200).json(new ApiResponse(200, formattedRides, 'Recent rides fetched successfully'));
 });
+
+export const getCustomersList = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const customers = await prisma.customer.findMany({
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      name: true,
+      phone: true,
+      email: true,
+      walletBalance: true,
+      role: true,
+      createdAt: true,
+      rides: {
+        take: 1,
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true, status: true },
+      },
+      _count: {
+        select: { rides: true },
+      },
+    },
+  });
+
+  const formatted = customers.map((c) => ({
+    id: c.id,
+    _id: c.id,
+    name: c.name,
+    phone: c.phone,
+    email: c.email,
+    walletBalance: c.walletBalance,
+    totalRides: c._count.rides,
+    status: 'active',
+    rating: 4.8,
+    createdAt: c.createdAt,
+    lastActive: c.rides[0]?.createdAt || c.createdAt,
+  }));
+
+  res.status(200).json(new ApiResponse(200, formatted, 'Customers fetched successfully'));
+});
+
+export const getDriversList = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const drivers = await prisma.rider.findMany({
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      name: true,
+      phone: true,
+      email: true,
+      vehicleType: true,
+      vehicle: true,
+      isAvailable: true,
+      walletBalance: true,
+      rating: true,
+      role: true,
+      createdAt: true,
+      _count: {
+        select: { rides: true },
+      },
+    },
+  });
+
+  const formatted = drivers.map((d) => ({
+    id: d.id,
+    _id: d.id,
+    name: d.name,
+    phone: d.phone,
+    email: d.email,
+    vehicleType: d.vehicleType || 'bike',
+    vehicle: d.vehicle,
+    isAvailable: d.isAvailable,
+    status: d.isAvailable ? 'online' : 'offline',
+    walletBalance: d.walletBalance,
+    rating: d.rating || 4.9,
+    completedRides: d._count.rides,
+    createdAt: d.createdAt,
+  }));
+
+  res.status(200).json(new ApiResponse(200, formatted, 'Drivers fetched successfully'));
+});

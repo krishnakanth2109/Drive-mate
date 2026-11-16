@@ -18,6 +18,8 @@ import fleetRoutes from './routes/fleetRoutes.js';
 import operationsRoutes from './routes/operationsRoutes.js';
 import financeRoutes from './routes/financeRoutes.js';
 import walletRoutes from './routes/walletRoutes.js';
+import authRoutes from './routes/authRoutes.js';
+import communityRoutes from './routes/communityRoutes.js';
 import { initSettlementScheduler } from './services/settlementScheduler.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -61,6 +63,8 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 // --- Routes ---
+app.use('/api/auth', authRoutes);
+app.use('/api/community', communityRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/ride', rideRoutes);
 app.use('/api/rider', riderRoutes);
@@ -169,6 +173,20 @@ io.on('connection', (socket: Socket) => {
         sender,
         text,
         time: time || new Date().toISOString(),
+      });
+    }
+  );
+
+  // 6. Real-time Community Direct Messaging between Connected Profiles
+  socket.on(
+    'community:send_message',
+    (data: { senderId: string; receiverId: string; message: string; id?: string }) => {
+      io.to(data.receiverId).emit('community:message', {
+        id: data.id || Date.now().toString(),
+        senderId: data.senderId,
+        receiverId: data.receiverId,
+        message: data.message,
+        createdAt: new Date().toISOString(),
       });
     }
   );

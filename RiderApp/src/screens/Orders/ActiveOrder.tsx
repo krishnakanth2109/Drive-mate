@@ -5,6 +5,7 @@ import { useRider } from '../../context/RiderContext';
 import { riderService } from '../../services/riderService';
 import { Ride } from '../../services/types';
 import RiderWebMapView from '../../components/RiderWebMapView';
+import DriverInRideSupportModal from '../../components/DriverInRideSupportModal';
 
 // Decode encoded polyline helper
 const decodePolyline = (t: string): { latitude: number; longitude: number }[] => {
@@ -37,10 +38,59 @@ const decodePolyline = (t: string): { latitude: number; longitude: number }[] =>
   return points;
 };
 
+// 3-Minute Waiting Timer for Driver
+const DriverWaitTimer = ({ arrivedAt }: { arrivedAt?: string | null }) => {
+  const [secondsRemaining, setSecondsRemaining] = useState<number>(180);
+  const [isExpired, setIsExpired] = useState<boolean>(false);
+  const [extraMinutes, setExtraMinutes] = useState<number>(0);
+
+  useEffect(() => {
+    const calculateTime = () => {
+      const arrivedTime = arrivedAt ? new Date(arrivedAt).getTime() : Date.now();
+      const elapsedSeconds = Math.max(0, Math.floor((Date.now() - arrivedTime) / 1000));
+      const freeSeconds = 180;
+      if (elapsedSeconds < freeSeconds) {
+        setSecondsRemaining(freeSeconds - elapsedSeconds);
+        setIsExpired(false);
+        setExtraMinutes(0);
+      } else {
+        setSecondsRemaining(0);
+        setIsExpired(true);
+        const extraSecs = elapsedSeconds - freeSeconds;
+        setExtraMinutes(Math.max(1, Math.ceil(extraSecs / 60)));
+      }
+    };
+
+    calculateTime();
+    const interval = setInterval(calculateTime, 1000);
+    return () => clearInterval(interval);
+  }, [arrivedAt]);
+
+  const mins = Math.floor(secondsRemaining / 60);
+  const secs = secondsRemaining % 60;
+  const timeFormatted = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+
+  return (
+    <View style={[styles.waitBadge, isExpired && styles.waitBadgeExpired]}>
+      <Ionicons name="time" size={16} color={isExpired ? '#e63946' : '#2ecc71'} />
+      {!isExpired ? (
+        <Text style={styles.waitBadgeText}>
+          Customer boarding time: <Text style={{ fontWeight: 'bold', color: '#2ecc71' }}>{timeFormatted}</Text>
+        </Text>
+      ) : (
+        <Text style={[styles.waitBadgeText, { color: '#e63946' }]}>
+          Free wait expired (+₹{extraMinutes * 2} wait fee active)
+        </Text>
+      )}
+    </View>
+  );
+};
+
 export default function ActiveOrderScreen({ navigation }: any) {
   const { activeRide, arriveAtPickup, location } = useRider();
   const [rideData, setRideData] = useState<Ride | null>(activeRide);
   const [loading, setLoading] = useState(false);
+  const [supportVisible, setSupportVisible] = useState(false);
 
   useEffect(() => {
     if (activeRide) {
@@ -51,6 +101,8 @@ export default function ActiveOrderScreen({ navigation }: any) {
         .catch(err => console.log('No active ride fetched', err));
     }
   }, [activeRide]);
+
+  const displayRideId = rideData?.displayId || (rideData?._id || rideData?.id ? `DM-${(rideData?._id || rideData?.id || '').slice(-6).toUpperCase()}` : 'DM-ACTIVE');
 
   const customerName = rideData?.customer?.name || 'Customer';
   const customerPhone = rideData?.customer?.phone || '+91 98765 43210';
@@ -113,6 +165,24 @@ export default function ActiveOrderScreen({ navigation }: any) {
 
       <View style={styles.bottomSheet}>
         <View style={styles.dragHandle} />
+
+        {/* Ride ID & Support Bar */}
+        <View style={styles.topInfoRow}>
+          <View style={styles.idBadge}>
+            <Ionicons name="receipt-outline" size={13} color="#f72585" />
+            <Text style={styles.idBadgeText}>#{displayRideId}</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.supportHeaderBtn}
+            onPress={() => setSupportVisible(true)}
+            activeOpacity={0.8}
+            accessibilityLabel="Open in-ride support"
+          >
+            <Ionicons name="headset-outline" size={14} color="#00f2fe" />
+            <Text style={styles.supportHeaderBtnText}>Help & Support</Text>
+          </TouchableOpacity>
+        </View>
+
         <Text style={styles.statusTitle}>
           {rideData?.status === 'arrived'
             ? 'Waiting for Customer'
@@ -123,6 +193,10 @@ export default function ActiveOrderScreen({ navigation }: any) {
         <Text style={styles.timeText}>
           {rideData?.distance ? `${rideData.distance} km total` : 'En route'} • ₹{rideData?.fare || 0}
         </Text>
+
+        {rideData?.status === 'arrived' && (
+          <DriverWaitTimer arrivedAt={rideData.arrivedAt} />
+        )}
 
         <View style={styles.customerCard}>
           <View style={styles.avatarPlaceholder}>
@@ -176,6 +250,17 @@ export default function ActiveOrderScreen({ navigation }: any) {
           </TouchableOpacity>
         )}
       </View>
+
+      <DriverInRideSupportModal
+        visible={supportVisible}
+        onClose={() => setSupportVisible(false)}
+        rideId={rideData?._id || rideData?.id}
+        displayId={displayRideId}
+        customerName={customerName}
+        customerPhone={customerPhone}
+        rideStatus={rideData?.status}
+        driverArrivedAt={rideData?.arrivedAt}
+      />
     </View>
   );
 }
@@ -211,7 +296,47 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 10,
   },
-  dragHandle: { width: 40, height: 5, backgroundColor: '#3b3b4f', borderRadius: 3, alignSelf: 'center', marginBottom: 18 },
+  dragHandle: { width: 40, height: 5, backgroundColor: '#3b3b4f', borderRadius: 3, alignSelf: 'center', marginBottom: 14 },
+  topInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  idBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(247, 37, 133, 0.12)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(247, 37, 133, 0.3)',
+  },
+  idBadgeText: {
+    color: '#f72585',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    fontFamily: 'monospace',
+  },
+  supportHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0, 242, 254, 0.12)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 242, 254, 0.35)',
+  },
+  supportHeaderBtnText: {
+    color: '#00f2fe',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   statusTitle: { fontSize: 20, fontWeight: 'bold', color: '#fff', marginBottom: 4 },
   timeText: { fontSize: 15, color: '#f72585', fontWeight: '600', marginBottom: 18 },
   customerCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#2a2a3c', padding: 14, borderRadius: 14, marginBottom: 16 },
@@ -227,4 +352,25 @@ const styles = StyleSheet.create({
   locText: { color: '#fff', marginLeft: 10, flex: 1, fontSize: 14 },
   primaryBtn: { backgroundColor: '#f72585', paddingVertical: 16, borderRadius: 14, alignItems: 'center' },
   primaryBtnText: { color: '#fff', fontSize: 17, fontWeight: 'bold' },
+  waitBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1b3b2b',
+    borderWidth: 1,
+    borderColor: '#2ecc71',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    marginBottom: 16,
+    gap: 8,
+  },
+  waitBadgeExpired: {
+    backgroundColor: '#3b1b22',
+    borderColor: '#e63946',
+  },
+  waitBadgeText: {
+    fontSize: 13,
+    color: '#fff',
+    fontWeight: '600',
+  },
 });

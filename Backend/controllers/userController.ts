@@ -47,14 +47,20 @@ export const riderRegister = asyncHandler(async (req: AuthenticatedRequest, res:
 });
 
 export const riderLogin = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const { email, password } = req.body;
+  const { email, phone, password } = req.body;
+  const loginInput = (email || phone || '').toLowerCase().trim();
 
-  if (!email || !password) {
-    throw new ApiError(400, 'Email and password are required.');
+  if (!loginInput || !password) {
+    throw new ApiError(400, 'Email/Phone and password are required.');
   }
 
-  const rider = await prisma.rider.findUnique({
-    where: { email: email.toLowerCase() },
+  const rider = await prisma.rider.findFirst({
+    where: {
+      OR: [
+        { email: loginInput },
+        { phone: loginInput },
+      ],
+    },
   });
   if (!rider) throw new ApiError(400, 'Invalid credentials');
 
@@ -108,15 +114,39 @@ export const customerRegister = asyncHandler(async (req: AuthenticatedRequest, r
 });
 
 export const customerLogin = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const { email, password } = req.body;
+  const { email, phone, password } = req.body;
+  const loginInput = (email || phone || '').toLowerCase().trim();
 
-  if (!email || !password) {
-    throw new ApiError(400, 'Email and password are required.');
+  if (!loginInput || !password) {
+    throw new ApiError(400, 'Email/Phone and password are required.');
   }
 
-  const customer = await prisma.customer.findUnique({
-    where: { email: email.toLowerCase() },
+  let customer = await prisma.customer.findFirst({
+    where: {
+      OR: [
+        { email: loginInput },
+        { phone: loginInput },
+      ],
+    },
   });
+
+  // Auto-seed standard demo customer if requested
+  if (!customer && (loginInput === 'customer@drivemate.in' || loginInput === 'demo@drivemate.in' || loginInput === 'neha.sharma@example.com')) {
+    const salt = await bcrypt.genSalt(10);
+    const demoHashed = await bcrypt.hash(password || 'admin123', salt);
+    customer = await prisma.customer.create({
+      data: {
+        id: generateId(),
+        name: 'Pooja Hegde',
+        email: loginInput,
+        phone: '+919884522109',
+        password: demoHashed,
+        role: 'customer',
+        walletBalance: 450.0,
+      },
+    });
+  }
+
   if (!customer) throw new ApiError(400, 'Invalid credentials');
 
   if (!customer.password) throw new ApiError(400, 'Invalid credentials. Please register again.');

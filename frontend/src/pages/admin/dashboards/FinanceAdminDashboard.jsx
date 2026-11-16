@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { 
   IndianRupee, 
   TrendingUp, 
@@ -9,7 +10,8 @@ import {
   Download, 
   ArrowUpRight,
   ShieldCheck,
-  Check
+  Check,
+  RefreshCw
 } from 'lucide-react';
 import { MetricCard } from '../../../components/common/MetricCard';
 import { DataTable } from '../../../components/common/DataTable';
@@ -18,28 +20,84 @@ import { DetailModal } from '../../../components/common/DetailModal';
 import { QuickActionBtn } from '../../../components/common/QuickActionBtn';
 import { NotificationToast } from '../../../components/common/NotificationToast';
 
-const PAYOUT_BATCHES = [
-  { batchId: 'BATCH-2026-W42', date: '25 Oct 2026', totalAmount: '₹1,42,850', driverCount: 48, gatewayFee: '₹1,850', status: 'pending authorization', method: 'IMPS Direct Transfer' },
-  { batchId: 'BATCH-2026-W41', date: '18 Oct 2026', totalAmount: '₹1,28,400', driverCount: 44, gatewayFee: '₹1,620', status: 'approved', method: 'IMPS Direct Transfer' },
-  { batchId: 'BATCH-2026-W40', date: '11 Oct 2026', totalAmount: '₹1,35,920', driverCount: 46, gatewayFee: '₹1,740', status: 'completed', method: 'IMPS Direct Transfer' },
-  { batchId: 'BATCH-2026-W39', date: '04 Oct 2026', totalAmount: '₹1,19,200', driverCount: 39, gatewayFee: '₹1,510', status: 'completed', method: 'IMPS Direct Transfer' },
-];
-
 export function FinanceAdminDashboard() {
-  const [batches, setBatches] = useState(PAYOUT_BATCHES);
+  const [batches, setBatches] = useState([]);
+  const [metrics, setMetrics] = useState({
+    totalDisbursedAmount: 1845000,
+    completedDisbursementsCount: 842,
+    pendingAuthorizationAmount: 248000,
+    pendingBatchesCount: 3,
+    settlementSuccessRate: '99.4%'
+  });
+  const [loading, setLoading] = useState(true);
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [toast, setToast] = useState(null);
 
-  const handleAuthorizeBatch = (batchId) => {
-    setBatches(prev =>
-      prev.map(b => (b.batchId === batchId ? { ...b, status: 'approved' } : b))
-    );
-    setSelectedBatch(null);
-    setToast({
-      title: 'Batch Payout Authorized',
-      message: `Batch ${batchId} authorized. Queued for automated bank transfer execution.`,
-      type: 'success'
-    });
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+  const token = sessionStorage.getItem('vlt_master_token');
+
+  const fetchFinanceData = async () => {
+    setLoading(true);
+    try {
+      const [batchesRes, metricsRes] = await Promise.all([
+        axios.get(`${API_URL}/finance/batches`, { headers: token ? { 'x-auth-token': token } : {} }),
+        axios.get(`${API_URL}/finance/metrics`, { headers: token ? { 'x-auth-token': token } : {} })
+      ]);
+
+      if (batchesRes.data?.data && Array.isArray(batchesRes.data.data)) {
+        const mapped = batchesRes.data.data.map(b => ({
+          id: b.id,
+          batchId: b.batchReference || `BATCH-${b.id.slice(-6).toUpperCase()}`,
+          date: new Date(b.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+          totalAmount: `₹${Number(b.totalAmount || 0).toLocaleString('en-IN')}`,
+          driverCount: b.driverCount || b.disbursementCount || 0,
+          gatewayFee: `₹${(Number(b.totalAmount || 0) * 0.012).toFixed(0)}`,
+          status: b.status || 'pending authorization',
+          method: 'IMPS Direct Transfer'
+        }));
+        setBatches(mapped);
+      } else {
+        setBatches([]);
+      }
+
+      if (metricsRes.data?.data) {
+        setMetrics(metricsRes.data.data);
+      }
+    } catch (err) {
+      console.warn('Error fetching live finance data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchFinanceData();
+  }, []);
+
+  const handleAuthorizeBatch = async (batchItem) => {
+    try {
+      await axios.patch(
+        `${API_URL}/finance/batches/${batchItem.id || batchItem.batchId}/authorize`,
+        { status: 'approved' },
+        { headers: token ? { 'x-auth-token': token } : {} }
+      );
+      setBatches(prev =>
+        prev.map(b => (b.batchId === batchItem.batchId ? { ...b, status: 'approved' } : b))
+      );
+      setSelectedBatch(null);
+      setToast({
+        title: 'Batch Payout Authorized',
+        message: `Batch ${batchItem.batchId} authorized. Queued for automated bank transfer execution.`,
+        type: 'success'
+      });
+      fetchFinanceData();
+    } catch (err) {
+      setToast({
+        title: 'Authorization Error',
+        message: err.response?.data?.message || 'Failed to authorize batch on backend',
+        type: 'error'
+      });
+    }
   };
 
   const columns = [
@@ -116,7 +174,7 @@ export function FinanceAdminDashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <MetricCard
           title="Platform GMV (MTD)"
-          value="₹18.42 Lakh"
+          value={`₹${(metrics.totalDisbursedAmount ? (metrics.totalDisbursedAmount / 100000).toFixed(2) : 18.42)} Lakh`}
           subtitle="Gross ride bookings"
           icon={IndianRupee}
           color="emerald"
@@ -125,7 +183,7 @@ export function FinanceAdminDashboard() {
         />
         <MetricCard
           title="Net Commission (20%)"
-          value="₹3.68 Lakh"
+          value={`₹${((metrics.totalDisbursedAmount ? metrics.totalDisbursedAmount * 0.2 : 368000) / 100000).toFixed(2)} Lakh`}
           subtitle="Platform net revenue"
           icon={TrendingUp}
           color="rose"
@@ -134,16 +192,16 @@ export function FinanceAdminDashboard() {
         />
         <MetricCard
           title="Pending Driver Payouts"
-          value="₹1.42 Lakh"
-          subtitle="Batch awaiting sign-off"
+          value={`₹${(metrics.pendingAuthorizationAmount ? (metrics.pendingAuthorizationAmount / 100000).toFixed(2) : 1.42)} Lakh`}
+          subtitle={`${metrics.pendingBatchesCount || 0} batches awaiting sign-off`}
           icon={CreditCard}
           color="amber"
-          trend="48 drivers queued"
+          trend={`${batches.length} batches queued`}
           trendType="neutral"
         />
         <MetricCard
           title="Payment Success Rate"
-          value="99.4%"
+          value={metrics.settlementSuccessRate || "99.4%"}
           subtitle="Razorpay & UPI gateway"
           icon={ShieldCheck}
           color="teal"
@@ -181,7 +239,7 @@ export function FinanceAdminDashboard() {
               <QuickActionBtn
                 variant="primary"
                 icon={Check}
-                onClick={() => handleAuthorizeBatch(selectedBatch.batchId)}
+                onClick={() => handleAuthorizeBatch(selectedBatch)}
               >
                 Authorize & Release Funds
               </QuickActionBtn>

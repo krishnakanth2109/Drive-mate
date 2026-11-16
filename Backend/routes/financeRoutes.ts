@@ -7,12 +7,14 @@ import {
   issueRefundVoucher,
   getRefundVouchers,
   getFinanceMetrics,
+  getFinancialLedger,
 } from '../controllers/financeController.js';
 
 const router = Router();
 
 // Metrics & Financial Overview
 router.get('/metrics', getFinanceMetrics);
+router.get('/ledger', getFinancialLedger);
 
 // Payout Batches (Finance Admin)
 router.get('/batches', getPayoutBatches);
