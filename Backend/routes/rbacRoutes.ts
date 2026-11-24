@@ -11,6 +11,8 @@ import {
   assignRolesToStaff,
   getAuditLogs,
   getMyPermissions,
+  getPermissionsList,
+  createCustomPermission,
 } from '../controllers/rbacController.js';
 
 const router: Router = express.Router();
@@ -20,6 +22,10 @@ router.use(adminAuth);
 
 // Get my effective permissions (for UI rendering)
 router.get('/my-permissions', getMyPermissions);
+
+// Permissions Catalog Management
+router.get('/permissions', getPermissionsList);
+router.post('/permissions', createCustomPermission);
 
 // Roles Management
 router.get('/roles', requirePermission('role:read'), getRoles);

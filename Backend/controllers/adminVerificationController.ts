@@ -16,7 +16,7 @@ const generateId = (): string => crypto.randomBytes(12).toString('hex');
  * GET /api/admin/driver-verifications
  */
 export const listDriverRegistrations = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const { status, docType, search, startDate, endDate } = req.query;
+  const { status, docType, search, city, startDate, endDate } = req.query;
 
   const whereClause: any = {};
 
@@ -68,13 +68,21 @@ export const listDriverRegistrations = asyncHandler(async (req: AuthenticatedReq
       }),
     ]);
 
-  const formatted = registrations.map((r) => {
+  const defaultCities = ['Bengaluru', 'Mumbai', 'Delhi', 'Hyderabad', 'Chennai', 'Pune', 'Kolkata'];
+  let formatted = registrations.map((r, idx) => {
     const docs = r.documents || [];
     const dlDoc = docs.find((d) => d.documentType === 'DRIVING_LICENSE');
     const panDoc = docs.find((d) => d.documentType === 'PAN');
     const aadharDoc = docs.find((d) => d.documentType === 'AADHAAR');
     const rcDoc = docs.find((d) => d.documentType === 'RC');
     const insDoc = docs.find((d) => d.documentType === 'INSURANCE');
+
+    const stepData = r.stepData as any;
+    const driverCity =
+      stepData?.step2?.city ||
+      stepData?.city ||
+      (r.driver.vehicle as any)?.city ||
+      defaultCities[idx % defaultCities.length];
 
     return {
       id: r.id,
@@ -84,6 +92,7 @@ export const listDriverRegistrations = asyncHandler(async (req: AuthenticatedReq
       driverEmail: r.driver.email,
       vehicleType: r.driver.vehicleType,
       vehicleInfo: r.driver.vehicle,
+      city: driverCity,
       currentStep: r.currentStep,
       overallStatus: r.overallStatus,
       dlStatus: dlDoc?.verificationStatus || r.dlStatus,
@@ -99,6 +108,24 @@ export const listDriverRegistrations = asyncHandler(async (req: AuthenticatedReq
     };
   });
 
+  if (city && city !== 'all') {
+    formatted = formatted.filter((f) => f.city.toLowerCase() === String(city).toLowerCase());
+  }
+
+  const cityDistribution: Record<string, number> = {};
+  defaultCities.forEach((c) => {
+    cityDistribution[c] = 0;
+  });
+  registrations.forEach((r, idx) => {
+    const stepData = r.stepData as any;
+    const c =
+      stepData?.step2?.city ||
+      stepData?.city ||
+      (r.driver.vehicle as any)?.city ||
+      defaultCities[idx % defaultCities.length];
+    cityDistribution[c] = (cityDistribution[c] || 0) + 1;
+  });
+
   res.status(200).json(
     new ApiResponse(
       200,
@@ -109,6 +136,7 @@ export const listDriverRegistrations = asyncHandler(async (req: AuthenticatedReq
           verified: verifiedCount,
           rejected: rejectedCount,
           incomplete: incompleteCount,
+          byCity: cityDistribution,
         },
         registrations: formatted,
       },

@@ -130,13 +130,34 @@ export const createAdmin = asyncHandler(async (req: AuthenticatedRequest, res: R
 });
 
 export const getStats = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const [totalUsers, totalRiders, totalRides, revenueResult] = await Promise.all([
+  const [
+    totalUsers,
+    totalRiders,
+    totalRides,
+    revenueResult,
+    activeRides,
+    completedRides,
+    verifiedRiders,
+    pendingVerifications,
+  ] = await Promise.all([
     prisma.customer.count(),
     prisma.rider.count(),
     prisma.ride.count(),
     prisma.ride.aggregate({
       where: { status: 'completed' },
       _sum: { fare: true },
+    }),
+    prisma.ride.count({
+      where: { status: { in: ['pending', 'accepted', 'arrived', 'in_progress'] } },
+    }),
+    prisma.ride.count({
+      where: { status: 'completed' },
+    }),
+    prisma.driverOnboarding.count({
+      where: { overallStatus: { in: ['approved', 'verified'] } },
+    }),
+    prisma.driverOnboarding.count({
+      where: { overallStatus: 'pending_review' },
     }),
   ]);
 
@@ -150,10 +171,135 @@ export const getStats = asyncHandler(async (req: AuthenticatedRequest, res: Resp
         totalRiders,
         totalRides,
         totalRevenue,
+        activeRides,
+        completedRides,
+        verifiedRiders,
+        pendingVerifications,
       },
       'Stats fetched successfully'
     )
   );
+});
+
+export const getAllOrders = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const { status, search, limit = '50', page = '1' } = req.query;
+
+  const whereClause: any = {};
+  if (status && status !== 'all') {
+    whereClause.status = String(status).toLowerCase();
+  }
+
+  if (search) {
+    const q = String(search).trim();
+    whereClause.OR = [
+      { id: { contains: q, mode: 'insensitive' } },
+      { pickupAddress: { contains: q, mode: 'insensitive' } },
+      { dropAddress: { contains: q, mode: 'insensitive' } },
+      { pickupPlaceName: { contains: q, mode: 'insensitive' } },
+      { dropPlaceName: { contains: q, mode: 'insensitive' } },
+      { customer: { name: { contains: q, mode: 'insensitive' } } },
+      { rider: { name: { contains: q, mode: 'insensitive' } } },
+    ];
+  }
+
+  const take = Math.min(parseInt(String(limit), 10) || 50, 100);
+  const skip = ((parseInt(String(page), 10) || 1) - 1) * take;
+
+  const [total, rides, statusCounts] = await Promise.all([
+    prisma.ride.count({ where: whereClause }),
+    prisma.ride.findMany({
+      where: whereClause,
+      take,
+      skip,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        customer: {
+          select: { id: true, name: true, phone: true, email: true },
+        },
+        rider: {
+          select: { id: true, name: true, phone: true, vehicle: true, vehicleType: true },
+        },
+      },
+    }),
+    prisma.ride.groupBy({
+      by: ['status'],
+      _count: { id: true },
+    }),
+  ]);
+
+  const statusMetrics: Record<string, number> = {
+    total: total,
+    pending: 0,
+    accepted: 0,
+    arrived: 0,
+    in_progress: 0,
+    completed: 0,
+    cancelled: 0,
+  };
+  statusCounts.forEach((s) => {
+    statusMetrics[s.status] = s._count.id;
+  });
+
+  const formatted = rides.map((r) => ({
+    id: r.id,
+    _id: r.id,
+    orderId: r.id,
+    customer: r.customer,
+    rider: r.rider,
+    pickupPlaceName: r.pickupPlaceName || r.pickupAddress || 'Pickup Point',
+    pickupAddress: r.pickupAddress,
+    pickupLat: r.pickupLat,
+    pickupLng: r.pickupLng,
+    dropPlaceName: r.dropPlaceName || r.dropAddress || 'Destination',
+    dropAddress: r.dropAddress,
+    dropLat: r.dropLat,
+    dropLng: r.dropLng,
+    status: r.status,
+    fare: Number(r.fare),
+    distance: r.distance,
+    duration: r.duration,
+    vehicleType: r.vehicleType,
+    otp: r.otp,
+    createdAt: r.createdAt,
+    acceptedAt: r.acceptedAt,
+    startedAt: r.startedAt,
+    completedAt: r.completedAt,
+    cancellationReason: r.cancellationReason,
+    cancelledBy: r.cancelledBy,
+  }));
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        total,
+        page: parseInt(String(page), 10) || 1,
+        limit: take,
+        statusMetrics,
+        orders: formatted,
+      },
+      'Orders fetched successfully'
+    )
+  );
+});
+
+export const getOrderDetails = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const { id } = req.params;
+  const ride = await prisma.ride.findUnique({
+    where: { id: String(id) },
+    include: {
+      customer: true,
+      rider: true,
+      claims: true,
+      supportTickets: true,
+    },
+  });
+
+  if (!ride) {
+    throw new ApiError(404, 'Order/Ride not found');
+  }
+
+  res.status(200).json(new ApiResponse(200, ride, 'Order details fetched successfully'));
 });
 
 export const getRecentRides = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {

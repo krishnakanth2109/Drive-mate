@@ -368,7 +368,7 @@ export const getAuditLogs = async (req: AuthenticatedRequest, res: Response, nex
   }
 };
 
-// ================= CURRENT ADMIN =================
+// ================= CURRENT ADMIN & PERMISSIONS TAXONOMY =================
 
 export const getMyPermissions = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
@@ -377,5 +377,94 @@ export const getMyPermissions = async (req: AuthenticatedRequest, res: Response,
     res.json({ success: true, data: permissions });
   } catch (err) {
     next(new ApiError(500, 'Error fetching permissions'));
+  }
+};
+
+export const getPermissionsList = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const roles = await prisma.role.findMany({ select: { permissions: true } });
+    const dynamicPermissions = new Set<string>();
+    roles.forEach((r) => r.permissions.forEach((p) => dynamicPermissions.add(p)));
+
+    const basePermissions = [
+      { id: 'dashboard:view', name: 'View Master Dashboard', category: 'Overview', description: 'Access executive KPIs, live revenue, and dispatch stats' },
+      { id: 'orders:read', name: 'View Orders & Rides', category: 'Orders', description: 'Inspect trip lifecycle, fares, OTP, and pickup/drop points' },
+      { id: 'orders:manage', name: 'Manage Orders', category: 'Orders', description: 'Cancel, update, or reassign ride requests' },
+      { id: 'riders:read', name: 'View Riders & Drivers', category: 'Riders & Fleet', description: 'Browse driver partners, vehicle specs, and city fleet' },
+      { id: 'riders:verify', name: 'Verify Driver Documents', category: 'Riders & Fleet', description: 'Approve, reject, or request re-upload of DL, PAN, RC, Aadhaar' },
+      { id: 'customers:read', name: 'View Customers', category: 'Customers', description: 'View passenger profiles, wallet balance, and trip counts' },
+      { id: 'users:manage', name: 'Manage Staff Users', category: 'Administration', description: 'Create and update administrator accounts and credentials' },
+      { id: 'role:read', name: 'View Roles', category: 'Access Control', description: 'View system roles and permission sets' },
+      { id: 'role:create', name: 'Create Roles', category: 'Access Control', description: 'Define new roles with custom permission matrices' },
+      { id: 'role:update', name: 'Modify Roles & Permissions', category: 'Access Control', description: 'Edit existing roles and attach granular permissions' },
+      { id: 'role:delete', name: 'Delete Roles', category: 'Access Control', description: 'Remove non-system custom roles' },
+      { id: 'permissions:manage', name: 'Create & Manage Permissions', category: 'Access Control', description: 'Add new system privileges and scope' },
+      { id: 'audit:read', name: 'View Audit Logs', category: 'Compliance', description: 'Inspect admin actions and verification trails' },
+    ];
+
+    const existingIds = new Set(basePermissions.map((p) => p.id));
+    const customList = Array.from(dynamicPermissions)
+      .filter((p) => !existingIds.has(p) && p !== '*' && p !== 'all')
+      .map((p) => ({
+        id: p,
+        name: p
+          .split(':')
+          .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+          .join(' '),
+        category: p.split(':')[0].toUpperCase(),
+        description: `Custom permission for ${p}`,
+      }));
+
+    res.json({ success: true, data: [...basePermissions, ...customList] });
+  } catch (err) {
+    next(new ApiError(500, 'Error fetching permissions list'));
+  }
+};
+
+export const createCustomPermission = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const { code, name, category, description } = req.body;
+    if (!code) {
+      return next(new ApiError(400, 'Permission code is required (e.g. "finance:export")'));
+    }
+
+    const cleanCode = String(code).trim().toLowerCase().replace(/\s+/g, '_');
+
+    // Auto-grant to the Master Admin role so it is active immediately
+    const adminRole = await prisma.role.findFirst({
+      where: { code: 'ADMIN' },
+    });
+
+    if (adminRole && !adminRole.permissions.includes(cleanCode)) {
+      await prisma.role.update({
+        where: { id: adminRole.id },
+        data: {
+          permissions: [...adminRole.permissions, cleanCode],
+        },
+      });
+    }
+
+    const adminId = req.user?.id || req.user?._id || 'system';
+    await logAudit(
+      adminId,
+      'PERMISSION_CREATED',
+      adminRole?.id || null,
+      null,
+      { code: cleanCode, name, category, description },
+      req
+    );
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: cleanCode,
+        name: name || cleanCode,
+        category: category || 'CUSTOM',
+        description: description || 'Custom permission',
+      },
+      message: 'Permission created and registered successfully',
+    });
+  } catch (err) {
+    next(new ApiError(500, 'Error creating permission'));
   }
 };
