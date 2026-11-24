@@ -235,8 +235,23 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
             )}
           </TouchableOpacity>
 
+          {/* 7-Step Partner Registration Card */}
+          <TouchableOpacity
+            style={styles.onboardingCardBtn}
+            onPress={() => navigation.navigate('Register')}
+          >
+            <View style={styles.onboardingCardIcon}>
+              <Ionicons name="car-sport" size={24} color="#f72585" />
+            </View>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={styles.onboardingCardTitle}>Become a DriveMate Partner</Text>
+              <Text style={styles.onboardingCardSub}>Complete 7-Step Registration & KYC</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#f72585" />
+          </TouchableOpacity>
+
           <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-            <Text style={styles.link}>New Partner? Register here</Text>
+            <Text style={styles.link}>New Partner? 7-Step Driver Registration</Text>
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -365,5 +380,35 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   btnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 16 },
-  link: { marginTop: 22, textAlign: 'center', color: '#007AFF', fontWeight: '600', fontSize: 14 },
+  onboardingCardBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff0f6',
+    borderWidth: 1.5,
+    borderColor: '#f72585',
+    borderRadius: 14,
+    padding: 14,
+    marginTop: 18,
+  },
+  onboardingCardIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#ffd6e7',
+  },
+  onboardingCardTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#1a1a2e',
+  },
+  onboardingCardSub: {
+    fontSize: 11,
+    color: '#666',
+    marginTop: 2,
+  },
+  link: { marginTop: 16, textAlign: 'center', color: '#007AFF', fontWeight: '600', fontSize: 14 },
 });

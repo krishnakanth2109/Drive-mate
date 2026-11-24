@@ -5,18 +5,50 @@ import { ShieldAlert, ArrowLeft } from 'lucide-react';
 
 const PERMISSION_GROUPS = [
   {
-    category: 'Rides',
+    category: 'Driver Document Verification & Compliance',
     permissions: [
-      { id: 'ride:read', label: 'View Rides' },
+      { id: 'documents:read', label: 'View Driver Documents (DL, Aadhaar, PAN, RC, Insurance)' },
+      { id: 'documents:verify', label: 'Verify Documents (Sandbox API & Manual)' },
+      { id: 'documents:reject', label: 'Reject Documents & Request Re-upload' },
+      { id: 'documents:download', label: 'Download & Export Document Vault' },
+      { id: 'verification:manage', label: 'Full Driver Onboarding Management' }
+    ]
+  },
+  {
+    category: 'Roles & Access Control (RBAC)',
+    permissions: [
+      { id: 'role:read', label: 'View System Roles' },
+      { id: 'role:create', label: 'Create Custom Roles' },
+      { id: 'role:update', label: 'Modify Roles & Permissions' },
+      { id: 'role:delete', label: 'Delete Roles' },
+      { id: 'staff:read', label: 'View Staff Directory' },
+      { id: 'staff:manage', label: 'Assign Roles to Staff' },
+      { id: 'audit:read', label: 'View Security Audit Trail' }
+    ]
+  },
+  {
+    category: 'Drivers & Fleet',
+    permissions: [
+      { id: 'driver:read', label: 'View Drivers' },
+      { id: 'driver:create', label: 'Create Driver Records' },
+      { id: 'driver:update', label: 'Update Driver Profiles' },
+      { id: 'driver:suspend', label: 'Suspend Drivers' },
+      { id: 'driver:approve', label: 'Approve & Activate Drivers' }
+    ]
+  },
+  {
+    category: 'Rides & Dispatch',
+    permissions: [
+      { id: 'ride:read', label: 'View Rides & Live GPS' },
       { id: 'ride:create', label: 'Create Rides' },
       { id: 'ride:update', label: 'Update Rides' },
       { id: 'ride:cancel', label: 'Cancel Rides' },
-      { id: 'ride:assign', label: 'Assign Driver' },
+      { id: 'ride:assign', label: 'Assign Drivers' },
       { id: 'ride:investigate', label: 'Investigate Rides' }
     ]
   },
   {
-    category: 'Customers',
+    category: 'Customers & Riders',
     permissions: [
       { id: 'customer:read', label: 'View Customers' },
       { id: 'customer:create', label: 'Create Customers' },
@@ -25,24 +57,11 @@ const PERMISSION_GROUPS = [
     ]
   },
   {
-    category: 'Drivers',
+    category: 'Finance & Payments',
     permissions: [
-      { id: 'driver:read', label: 'View Drivers' },
-      { id: 'driver:update', label: 'Update Drivers' },
-      { id: 'driver:suspend', label: 'Suspend Drivers' },
-      { id: 'driver:approve', label: 'Approve Drivers' }
-    ]
-  },
-  {
-    category: 'Access Control',
-    permissions: [
-      { id: 'role:read', label: 'View Roles' },
-      { id: 'role:create', label: 'Create Roles' },
-      { id: 'role:update', label: 'Update Roles' },
-      { id: 'role:delete', label: 'Delete Roles' },
-      { id: 'staff:read', label: 'View Staff' },
-      { id: 'staff:manage', label: 'Assign Roles to Staff' },
-      { id: 'audit:read', label: 'View Audit Logs' }
+      { id: 'payment:read', label: 'View Payment Ledgers' },
+      { id: 'payment:refund', label: 'Issue Customer Refunds' },
+      { id: 'finance:manage', label: 'Authorize Driver Payouts' }
     ]
   }
 ];
@@ -74,7 +93,8 @@ export function CreateRole() {
   const handleCreate = async () => {
     try {
       const token = sessionStorage.getItem('vlt_master_token');
-      await axios.post('http://localhost:5000/api/rbac/roles', {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      await axios.post(`${API_URL}/rbac/roles`, {
         ...formData,
         permissions: selectedPermissions
       }, {

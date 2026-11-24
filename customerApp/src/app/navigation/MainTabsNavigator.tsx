@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Platform } from 'react-native';
 
 import HomeScreen from '../../features/home/screens/HomeScreen';
+import ServicesScreen from '../../features/services/screens/ServicesScreen';
 import RideHistoryScreen from '../../features/rides/screens/RideHistoryScreen';
 import ProfileScreen from '../../features/profile/screens/ProfileScreen';
 
@@ -21,6 +22,8 @@ export default function MainTabsNavigator() {
 
           if (route.name === 'Home') {
             iconName = focused ? 'home' : 'home-outline';
+          } else if (route.name === 'Services') {
+            iconName = focused ? 'grid' : 'grid-outline';
           } else if (route.name === 'My Rides') {
             iconName = focused ? 'car-sport' : 'car-sport-outline';
           } else if (route.name === 'Profile') {
@@ -59,17 +62,24 @@ export default function MainTabsNavigator() {
         }}
       />
       <Tab.Screen 
+        name="Services" 
+        component={ServicesScreen} 
+        options={{
+          tabBarLabel: 'Services',
+        }}
+      />
+      <Tab.Screen 
         name="My Rides" 
         component={RideHistoryScreen} 
         options={{
-          tabBarLabel: 'My Rides',
+          tabBarLabel: 'Activity',
         }}
       />
       <Tab.Screen 
         name="Profile" 
         component={ProfileScreen} 
         options={{
-          tabBarLabel: 'Profile',
+          tabBarLabel: 'Account',
         }}
       />
     </Tab.Navigator>

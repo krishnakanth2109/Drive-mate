@@ -47,7 +47,7 @@ export default function OnboardingScreen({ navigation }: Props) {
     if (currentIndex < slides.length - 1) {
       setCurrentIndex(currentIndex + 1);
     } else {
-      navigation.replace('Login');
+      navigation.replace('Register');
     }
   };
 

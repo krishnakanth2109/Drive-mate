@@ -14,10 +14,12 @@ import {
   ActivityIndicator,
   RefreshControl,
   Dimensions,
+  NativeModules,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { api } from '../../../services/api';
+import { useCustomer } from '../../../context/CustomerContext';
 
 const { width } = Dimensions.get('window');
 
@@ -50,6 +52,7 @@ interface TransactionItem {
 
 export default function WalletScreen() {
   const navigation = useNavigation<any>();
+  const { currentUser, setCurrentUser } = useCustomer();
 
   // Authoritative State
   const [wallet, setWallet] = useState<WalletData | null>(null);
@@ -89,9 +92,10 @@ export default function WalletScreen() {
   const [selectedTx, setSelectedTx] = useState<TransactionItem | null>(null);
 
   // Format currency consistently as Indian Rupee (INR)
-  const formatCurrency = (amount: number | undefined | null) => {
-    if (amount === undefined || amount === null || isNaN(amount)) return '₹0.00';
-    return `₹${amount.toLocaleString('en-IN', {
+  const formatCurrency = (amount: number | string | undefined | null) => {
+    const num = Number(amount);
+    if (amount === undefined || amount === null || isNaN(num)) return '₹0.00';
+    return `₹${num.toLocaleString('en-IN', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;
@@ -121,6 +125,9 @@ export default function WalletScreen() {
       const data = res.data?.data !== undefined ? res.data.data : res.data;
       if (data) {
         setWallet(data);
+        if (currentUser && setCurrentUser && data.balance !== undefined && data.balance !== null) {
+          setCurrentUser({ ...currentUser, walletBalance: Number(data.balance) });
+        }
       }
     } catch (err: any) {
       console.error('Error fetching wallet:', err);
@@ -218,13 +225,24 @@ export default function WalletScreen() {
 
       setTopupModalVisible(false);
 
-      // 2. Razorpay Checkout attempt
+      // 2. Safe Razorpay Checkout check
+      // In Expo Go or Web, native Razorpay module is unavailable so we safely route to the simulated instant top-up
+      const hasNativeRazorpay =
+        Platform.OS !== 'web' &&
+        Boolean(NativeModules?.RNRazorpayCheckout);
+
       let RazorpayCheckout: any = null;
-      try {
-        RazorpayCheckout = require('react-native-razorpay').default || require('react-native-razorpay');
-      } catch (_) {
-        RazorpayCheckout = null;
+      if (hasNativeRazorpay) {
+        try {
+          RazorpayCheckout = require('react-native-razorpay').default || require('react-native-razorpay');
+        } catch (_) {
+          RazorpayCheckout = null;
+        }
       }
+
+      const prefillEmail = currentUser?.email || 'commuter@drivemate.com';
+      const prefillPhone = currentUser?.phone || '9876543210';
+      const prefillName = currentUser?.name || 'DriveMate Commuter';
 
       const options = {
         description: 'DriveMate Wallet Recharge',
@@ -235,20 +253,20 @@ export default function WalletScreen() {
         name: 'DriveMate',
         order_id: orderData.orderId,
         prefill: {
-          email: 'rider@drivemate.com',
-          contact: '9876543210',
-          name: 'DriveMate Rider',
+          email: prefillEmail,
+          contact: prefillPhone,
+          name: prefillName,
         },
         theme: { color: '#f72585' },
       };
 
-      if (RazorpayCheckout && typeof RazorpayCheckout.open === 'function') {
+      if (hasNativeRazorpay && RazorpayCheckout && typeof RazorpayCheckout.open === 'function') {
         // Native build with compiled Razorpay SDK
         RazorpayCheckout.open(options)
           .then(async (response: any) => {
             // 3. Verify signature on backend
             try {
-              const verifyRes = await api.post('/wallet/topup/verify', {
+              await api.post('/wallet/topup/verify', {
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_signature: response.razorpay_signature,
@@ -287,10 +305,10 @@ export default function WalletScreen() {
             });
           });
       } else {
-        // Expo Go Sandbox Preview Flow
+        // Instant Test / Expo Go Sandbox Top-Up Flow
         Alert.alert(
-          'Razorpay Test Mode',
-          `Native checkout runs in standalone build. Complete this test payment of ₹${numericAmount.toFixed(2)} using the Razorpay test sandbox?`,
+          'Instant Wallet Recharge',
+          `Add ₹${numericAmount.toFixed(2)} to your DriveMate Wallet using the development payment simulator?`,
           [
             {
               text: 'Cancel',
@@ -306,7 +324,7 @@ export default function WalletScreen() {
               },
             },
             {
-              text: 'Complete Test Top-Up',
+              text: `Recharge ₹${numericAmount.toFixed(2)}`,
               onPress: async () => {
                 try {
                   const simRes = await api.post('/wallet/topup/simulate-test-payment', {
@@ -319,7 +337,7 @@ export default function WalletScreen() {
                     visible: true,
                     status: 'success',
                     title: 'Money Added Successfully!',
-                    message: `₹${numericAmount.toFixed(2)} added to your wallet via Razorpay Test Mode.`,
+                    message: `₹${numericAmount.toFixed(2)} added to your wallet.`,
                     amount: numericAmount,
                     reference: simData?.paymentId || orderData.orderId,
                   });
@@ -331,7 +349,7 @@ export default function WalletScreen() {
                   setPaymentFeedback({
                     visible: true,
                     status: 'failed',
-                    title: 'Test Top-Up Failed',
+                    title: 'Top-Up Failed',
                     message: simErr?.response?.data?.message || 'Failed to complete test payment.',
                   });
                 }

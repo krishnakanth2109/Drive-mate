@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { riderService } from '../../services/riderService';
 import { RiderDocument } from '../../services/types';
 
-export default function DocumentsScreen() {
+export default function DocumentsScreen({ navigation }: any) {
   const [docs, setDocs] = useState<RiderDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -70,6 +70,18 @@ export default function DocumentsScreen() {
         <Ionicons name="document-text" size={48} color="#3b5998" />
         <Text style={styles.headerTitle}>Document Verification</Text>
         <Text style={styles.headerSub}>Upload clear photos of your original documents to activate your account fully.</Text>
+
+        <TouchableOpacity
+          style={styles.wizardCta}
+          onPress={() => navigation?.navigate('DriverOnboardingWizard')}
+        >
+          <Ionicons name="shield-checkmark" size={20} color="#fff" style={{ marginRight: 8 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.wizardCtaTitle}>7-Step Driver Onboarding Wizard</Text>
+            <Text style={styles.wizardCtaSub}>Automated KYC, PAN & RC Sandbox Verification</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#fff" />
+        </TouchableOpacity>
       </View>
 
       <View style={styles.list}>
@@ -131,6 +143,18 @@ const styles = StyleSheet.create({
   header: { padding: 30, alignItems: 'center', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
   headerTitle: { fontSize: 22, fontWeight: 'bold', color: '#1a1a2e', marginTop: 12 },
   headerSub: { fontSize: 14, color: '#666', textAlign: 'center', marginTop: 8, lineHeight: 20 },
+  wizardCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#000',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginTop: 18,
+    width: '100%',
+  },
+  wizardCtaTitle: { color: '#fff', fontSize: 13, fontWeight: 'bold' },
+  wizardCtaSub: { color: '#bbb', fontSize: 11, marginTop: 2 },
   list: { padding: 20 },
   docCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fff', padding: 16, borderRadius: 12, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 3, elevation: 1 },
   docLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },

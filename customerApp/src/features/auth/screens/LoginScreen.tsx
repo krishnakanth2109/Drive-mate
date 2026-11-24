@@ -10,10 +10,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  StatusBar,
   Dimensions,
   Switch,
 } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../../services/api';
@@ -171,7 +171,7 @@ export default function LoginScreen({ navigation }: any) {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <StatusBar barStyle="light-content" backgroundColor="#0b0b14" />
+      <StatusBar style="light" />
 
       {/* Futuristic Background Accents */}
       <View style={styles.glowTop} />

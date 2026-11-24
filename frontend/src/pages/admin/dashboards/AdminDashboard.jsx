@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { 
   Users, 
@@ -11,7 +12,11 @@ import {
   ArrowUpRight, 
   MapPin, 
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Lock,
+  FileCheck,
+  ShieldAlert,
+  ArrowRight
 } from 'lucide-react';
 import { MetricCard } from '../../../components/common/MetricCard';
 import { DataTable } from '../../../components/common/DataTable';
@@ -21,6 +26,7 @@ import { QuickActionBtn } from '../../../components/common/QuickActionBtn';
 import { NotificationToast } from '../../../components/common/NotificationToast';
 
 export function AdminDashboard() {
+  const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [recentRides, setRecentRides] = useState([]);
   const [healthStatus, setHealthStatus] = useState(null);
@@ -177,6 +183,81 @@ export function AdminDashboard() {
             <span className="w-2 h-2 rounded-full bg-emerald-400" />
             Socket.IO Engine: <span className="text-white font-semibold">Port 5000</span>
           </div>
+        </div>
+      </div>
+
+      {/* Admin Executive Quick Actions */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div
+          onClick={() => navigate('/master/access-control/roles')}
+          className="p-5 rounded-2xl bg-gradient-to-br from-neutral-900 to-neutral-950 border border-emerald-500/30 hover:border-emerald-500/60 transition-all cursor-pointer group shadow-lg"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+              <Lock className="w-5 h-5" />
+            </div>
+            <ArrowRight className="w-4 h-4 text-neutral-500 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all" />
+          </div>
+          <h4 className="font-bold text-white text-sm group-hover:text-emerald-400 transition-colors">
+            Modify Roles & Permissions
+          </h4>
+          <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
+            Create, update permissions, assign capabilities, and configure system RBAC.
+          </p>
+        </div>
+
+        <div
+          onClick={() => navigate('/master/verification/dl')}
+          className="p-5 rounded-2xl bg-gradient-to-br from-neutral-900 to-neutral-950 border border-blue-500/30 hover:border-blue-500/60 transition-all cursor-pointer group shadow-lg"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400">
+              <FileCheck className="w-5 h-5" />
+            </div>
+            <ArrowRight className="w-4 h-4 text-neutral-500 group-hover:text-blue-400 group-hover:translate-x-1 transition-all" />
+          </div>
+          <h4 className="font-bold text-white text-sm group-hover:text-blue-400 transition-colors">
+            View & Verify Driver Documents
+          </h4>
+          <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
+            Inspect DL, Aadhaar, PAN, RC, and Cloudinary stored driver vault photos.
+          </p>
+        </div>
+
+        <div
+          onClick={() => navigate('/master/verification/pending')}
+          className="p-5 rounded-2xl bg-gradient-to-br from-neutral-900 to-neutral-950 border border-amber-500/30 hover:border-amber-500/60 transition-all cursor-pointer group shadow-lg"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <ArrowRight className="w-4 h-4 text-neutral-500 group-hover:text-amber-400 group-hover:translate-x-1 transition-all" />
+          </div>
+          <h4 className="font-bold text-white text-sm group-hover:text-amber-400 transition-colors">
+            Pending Document Reviews
+          </h4>
+          <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
+            Manual compliance queue for driver documents requiring administrative audit.
+          </p>
+        </div>
+
+        <div
+          onClick={() => navigate('/master/admins')}
+          className="p-5 rounded-2xl bg-gradient-to-br from-neutral-900 to-neutral-950 border border-purple-500/30 hover:border-purple-500/60 transition-all cursor-pointer group shadow-lg"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400">
+              <Users className="w-5 h-5" />
+            </div>
+            <ArrowRight className="w-4 h-4 text-neutral-500 group-hover:text-purple-400 group-hover:translate-x-1 transition-all" />
+          </div>
+          <h4 className="font-bold text-white text-sm group-hover:text-purple-400 transition-colors">
+            Staff Role Allocation
+          </h4>
+          <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
+            Manage corporate staff accounts and assign administrative roles.
+          </p>
         </div>
       </div>
 

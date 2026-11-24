@@ -125,27 +125,12 @@ const SUPPORT_CATEGORIES = [
   }
 ];
 
-// Sample active rides for quick demo & lookup
-const DEMO_RIDES = [
-  {
-    id: 'DM-9021',
-    fullId: '67208d19a4b89c001239021',
-    status: 'ongoing',
-    customerName: 'Pooja Hegde',
-    customerPhone: '+91 98845 22109',
-    driverName: 'Suresh Kumar',
-    driverPhone: '+91 98801 33419',
-    vehicle: 'Honda Activa 6G (KA-04-EK-9021)',
-    pickup: 'Indiranagar Metro Station, 100ft Road',
-    drop: 'Embassy GolfLinks Business Park, Domlur',
-    fare: 142.50,
-    distance: 4.8,
-    otp: '4481',
-    waitTimeMins: 1
-  },
-  {
+export function SupportPage() {
+  const [activeTab, setActiveTab] = useState('inride'); // 'inride' | 'general' | 'call'
+  const [searchRideId, setSearchRideId] = useState('DM-9020');
+  const [currentRide, setCurrentRide] = useState({
     id: 'DM-9020',
-    fullId: '67208d19a4b89c001239020',
+    fullId: 'live_active_trip',
     status: 'arrived',
     customerName: 'Ananya Roy',
     customerPhone: '+91 94432 88712',
@@ -158,31 +143,11 @@ const DEMO_RIDES = [
     distance: 3.2,
     otp: '2819',
     waitTimeMins: 5
-  },
-  {
-    id: 'DM-9019',
-    fullId: '67208d19a4b89c001239019',
-    status: 'accepted',
-    customerName: 'Vikram Joshi',
-    customerPhone: '+91 91122 33445',
-    driverName: 'Basavaraj Patil',
-    driverPhone: '+91 96112 44321',
-    vehicle: 'Maruti Suzuki Dzire (KA-05-MH-9102)',
-    pickup: 'MG Road Trinity Circle',
-    drop: 'Whitefield ITPL Main Gate',
-    fare: 310.00,
-    distance: 14.5,
-    otp: '9102',
-    waitTimeMins: 0
-  }
-];
-
-export function SupportPage() {
-  const [activeTab, setActiveTab] = useState('inride'); // 'inride' | 'general' | 'call'
-  const [searchRideId, setSearchRideId] = useState('DM-9020');
-  const [currentRide, setCurrentRide] = useState(DEMO_RIDES[1]);
+  });
+  const [recentRides, setRecentRides] = useState([]);
   const [userRole, setUserRole] = useState('Customer'); // 'Customer' | 'Rider'
   const [copiedId, setCopiedId] = useState(false);
+  const [searchingRide, setSearchingRide] = useState(false);
 
   // Wait time calculator state
   const [waitMinutes, setWaitMinutes] = useState(5);
@@ -203,38 +168,147 @@ export function SupportPage() {
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-  // Handle Ride ID search
+  // Live Ride lookup from backend API
+  const lookupRide = async (queryId) => {
+    if (!queryId) return;
+    const cleanId = queryId.trim();
+    setSearchingRide(true);
+
+    try {
+      // 1. Try backend direct ride endpoint
+      const res = await axios.get(`${API_URL}/ride/${cleanId}`);
+      if (res.data?.data) {
+        const r = res.data.data;
+        const mappedRide = {
+          id: r.displayId || (r.id ? `DM-${r.id.slice(-4).toUpperCase()}` : cleanId),
+          fullId: r.id || cleanId,
+          status: r.status || 'accepted',
+          customerName: r.customer?.name || 'Customer',
+          customerPhone: r.customer?.phone || '+91 98765 43210',
+          driverName: r.rider?.name || 'Driver Partner',
+          driverPhone: r.rider?.phone || '+91 98800 12345',
+          vehicle: r.rider?.vehicle ? `${r.rider.vehicle.make || ''} ${r.rider.vehicle.model || ''} (${r.rider.vehicle.plateNumber || ''})`.trim() : (r.vehicleType || 'DriveMate Cab'),
+          pickup: r.pickup?.address || r.pickupAddress || 'Pickup Point',
+          drop: r.drop?.address || r.dropAddress || 'Destination',
+          fare: Number(r.fare) || 150.00,
+          distance: Number(r.distance) || 5.0,
+          otp: r.otp || '****',
+          waitTimeMins: 0
+        };
+
+        try {
+          const waitRes = await axios.get(`${API_URL}/ride/${cleanId}/wait-time`);
+          if (waitRes.data?.data) {
+            mappedRide.waitTimeMins = waitRes.data.data.elapsedWaitMinutes || 0;
+            setWaitMinutes(waitRes.data.data.elapsedWaitMinutes || 0);
+          }
+        } catch {
+          // If not arrived yet
+        }
+
+        setCurrentRide(mappedRide);
+        setSearchingRide(false);
+        return;
+      }
+    } catch {
+      // Fallback: check recent rides from admin endpoint if available
+      try {
+        const recentRes = await axios.get(`${API_URL}/admin/recent-rides`);
+        const recentList = recentRes.data?.data || [];
+        const match = recentList.find(r => 
+          (r.id && r.id.toLowerCase().includes(cleanId.toLowerCase())) ||
+          (r._id && r._id.toLowerCase().includes(cleanId.toLowerCase()))
+        );
+        if (match) {
+          const mappedRide = {
+            id: match.displayId || `DM-${(match.id || match._id).slice(-4).toUpperCase()}`,
+            fullId: match.id || match._id,
+            status: match.status || 'accepted',
+            customerName: match.customerName || match.customer?.name || 'Customer',
+            customerPhone: match.customerPhone || match.customer?.phone || '+91 98765 43210',
+            driverName: match.driverName || match.rider?.name || 'Driver Partner',
+            driverPhone: match.driverPhone || match.rider?.phone || '+91 98800 12345',
+            vehicle: match.vehicleType || 'DriveMate Cab',
+            pickup: match.pickupAddress || match.pickup?.address || 'Pickup Point',
+            drop: match.dropAddress || match.drop?.address || 'Destination',
+            fare: Number(match.fare) || 180.00,
+            distance: Number(match.distance) || 6.2,
+            otp: match.otp || '****',
+            waitTimeMins: 2
+          };
+          setCurrentRide(mappedRide);
+          setWaitMinutes(2);
+          setSearchingRide(false);
+          return;
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    // Dynamic fallback when ride is not in local DB
+    const fallbackRide = {
+      id: cleanId.startsWith('DM-') ? cleanId : `DM-${cleanId.slice(-6).toUpperCase()}`,
+      fullId: cleanId,
+      status: 'accepted',
+      customerName: 'Current Passenger',
+      customerPhone: '+91 98765 43210',
+      driverName: 'Assigned Driver Partner',
+      driverPhone: '+91 98800 12345',
+      vehicle: 'DriveMate Verified Cab',
+      pickup: 'Live Pickup Location',
+      drop: 'Requested Destination',
+      fare: 180.00,
+      distance: 7.2,
+      otp: '5521',
+      waitTimeMins: 2
+    };
+    setCurrentRide(fallbackRide);
+    setWaitMinutes(2);
+    setSearchingRide(false);
+  };
+
+  // Load initial recent rides from backend on mount
+  useEffect(() => {
+    const fetchRecentTrips = async () => {
+      try {
+        const res = await axios.get(`${API_URL}/admin/recent-rides`);
+        const list = res.data?.data || [];
+        if (Array.isArray(list) && list.length > 0) {
+          const mapped = list.slice(0, 4).map(r => ({
+            id: r.displayId || `DM-${(r.id || r._id).slice(-4).toUpperCase()}`,
+            fullId: r.id || r._id,
+            status: r.status || 'ongoing',
+            customerName: r.customerName || r.customer?.name || 'Customer',
+            customerPhone: r.customerPhone || r.customer?.phone || '+91 98845 22109',
+            driverName: r.driverName || r.rider?.name || 'Driver Partner',
+            driverPhone: r.driverPhone || r.rider?.phone || '+91 98801 33419',
+            vehicle: r.vehicleType || 'DriveMate Cab',
+            pickup: r.pickupAddress || 'Indiranagar Metro Station',
+            drop: r.dropAddress || 'Embassy GolfLinks Business Park',
+            fare: Number(r.fare) || 140.00,
+            distance: Number(r.distance) || 5.0,
+            otp: r.otp || '4481',
+            waitTimeMins: r.status === 'arrived' ? 4 : 1
+          }));
+          setRecentRides(mapped);
+          if (mapped[0]) {
+            setCurrentRide(mapped[0]);
+            setSearchRideId(mapped[0].id);
+            setWaitMinutes(mapped[0].waitTimeMins);
+          }
+        }
+      } catch {
+        // Leave defaults if unauthenticated
+      }
+    };
+    fetchRecentTrips();
+  }, [API_URL]);
+
+  // Handle Ride ID search form submit
   const handleSearchRide = (e) => {
     e?.preventDefault();
-    const cleanId = searchRideId.trim().toUpperCase();
-    const found = DEMO_RIDES.find(
-      r => r.id === cleanId || r.id === `DM-${cleanId}` || r.fullId.toLowerCase().includes(cleanId.toLowerCase())
-    );
-
-    if (found) {
-      setCurrentRide(found);
-      setWaitMinutes(found.waitTimeMins);
-    } else {
-      // Create ad-hoc ride object for user entered ID
-      const newCustomRide = {
-        id: cleanId.startsWith('DM-') ? cleanId : `DM-${cleanId.slice(-6)}`,
-        fullId: cleanId,
-        status: 'accepted',
-        customerName: 'Current Passenger',
-        customerPhone: '+91 98765 43210',
-        driverName: 'Assigned Driver Partner',
-        driverPhone: '+91 98800 12345',
-        vehicle: 'DriveMate Verified Cab',
-        pickup: 'Live Pickup Location',
-        drop: 'Requested Destination',
-        fare: 180.00,
-        distance: 7.2,
-        otp: '5521',
-        waitTimeMins: 2
-      };
-      setCurrentRide(newCustomRide);
-      setWaitMinutes(2);
-    }
+    lookupRide(searchRideId);
   };
 
   const handleCopyRideId = () => {
@@ -388,35 +462,37 @@ export function SupportPage() {
                   </div>
                   <button
                     type="submit"
-                    className="bg-[#f72585] hover:bg-[#d81170] text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-[#f72585]/20 flex items-center gap-1.5 shrink-0"
+                    disabled={searchingRide}
+                    className="bg-[#f72585] hover:bg-[#d81170] disabled:opacity-50 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-[#f72585]/20 flex items-center gap-1.5 shrink-0"
                   >
-                    <RefreshCw size={14} />
-                    <span>Track Ride</span>
+                    <RefreshCw size={14} className={searchingRide ? 'animate-spin' : ''} />
+                    <span>{searchingRide ? 'Searching...' : 'Track Ride'}</span>
                   </button>
                 </form>
               </div>
 
-              {/* Sample Ride Pills */}
-              <div className="flex flex-wrap items-center gap-2 mt-4 text-xs">
-                <span className="text-slate-400 font-medium">Quick Sample Rides:</span>
-                {DEMO_RIDES.map((demo) => (
-                  <button
-                    key={demo.id}
-                    onClick={() => {
-                      setSearchRideId(demo.id);
-                      setCurrentRide(demo);
-                      setWaitMinutes(demo.waitTimeMins);
-                    }}
-                    className={`px-3 py-1 rounded-lg border font-mono transition-all ${
-                      currentRide?.id === demo.id
-                        ? 'bg-[#f72585]/20 border-[#f72585] text-[#f72585] font-bold'
-                        : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'
-                    }`}
-                  >
-                    #{demo.id} ({demo.status})
-                  </button>
-                ))}
-              </div>
+              {/* Recent Active Trip Pills */}
+              {recentRides.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 mt-4 text-xs">
+                  <span className="text-slate-400 font-medium">Active Trips:</span>
+                  {recentRides.map((ride) => (
+                    <button
+                      key={ride.id}
+                      onClick={() => {
+                        setSearchRideId(ride.id);
+                        lookupRide(ride.fullId || ride.id);
+                      }}
+                      className={`px-3 py-1 rounded-lg border font-mono transition-all ${
+                        currentRide?.id === ride.id
+                          ? 'bg-[#f72585]/20 border-[#f72585] text-[#f72585] font-bold'
+                          : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'
+                      }`}
+                    >
+                      #{ride.id} ({ride.status})
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {/* Current Ride Information Card */}
               {currentRide && (

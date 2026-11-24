@@ -25,14 +25,18 @@ import {
   verifyOtp,
   resetPassword,
 } from '../controllers/riderController.js';
+import { getRiderHistory } from '../controllers/rideController.js';
+import { cacheMiddleware } from '../middleware/cacheMiddleware.js';
+import { otpLimiter } from '../middleware/rateLimitMiddleware.js';
 
 const router: Router = express.Router();
 
-// --- Public Auth Routes ---
-router.post('/auth/forgot-password', forgotPassword);
-router.post('/auth/verify-otp', verifyOtp);
-router.post('/auth/reset-password', resetPassword);
-router.get('/support/faqs', getDriverFaqs);
+// --- Public Auth & Support Routes ---
+router.post('/auth/forgot-password', otpLimiter, forgotPassword);
+router.post('/auth/verify-otp', otpLimiter, verifyOtp);
+router.post('/auth/reset-password', otpLimiter, resetPassword);
+router.get('/support/faqs', cacheMiddleware(300), getDriverFaqs);
+router.get('/faqs', cacheMiddleware(300), getDriverFaqs);
 
 // --- Protected Rider Routes ---
 router.use(auth);
@@ -63,6 +67,10 @@ router.post('/wallet/link-account', linkPaymentAccount);
 router.get('/earnings', getRiderEarnings);
 router.get('/incentives', getRiderIncentives);
 router.get('/offers', getRiderOffers);
+
+// Rides History Alias
+router.get('/rides', getRiderHistory);
+router.get('/history', getRiderHistory);
 
 // Notifications
 router.get('/notifications', getRiderNotifications);

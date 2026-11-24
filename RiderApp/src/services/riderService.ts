@@ -141,4 +141,72 @@ export const riderService = {
     const res = await api.post('/rider/auth/reset-password', { email, password });
     return res.data;
   },
+
+  // --- 7-Step Driver Onboarding & Sandbox Document Verification ---
+  startOnboarding: async (): Promise<any> => {
+    const res = await api.post('/driver-onboarding/start');
+    return res.data;
+  },
+  getOnboardingProgress: async (): Promise<any> => {
+    const res = await api.get('/driver-onboarding/progress');
+    return res.data;
+  },
+  saveOnboardingStep: async (step: number, data: any): Promise<any> => {
+    const res = await api.put(`/driver-onboarding/step/${step}`, data);
+    return res.data;
+  },
+  verifyDl: async (data: { dlNumber?: string; dob?: string; frontImage?: string; backImage?: string; expiryDate?: string }): Promise<any> => {
+    const res = await api.post('/driver-onboarding/dl', data);
+    return res.data;
+  },
+  verifyAadhaar: async (data: { aadhaarNumber?: string; frontImage?: string; backImage?: string; consentGiven: boolean; useDigiLocker?: boolean }): Promise<any> => {
+    const res = await api.post('/driver-onboarding/aadhaar', data);
+    return res.data;
+  },
+  verifyPan: async (data: { pan: string; nameAsPerPan: string; panImage?: string }): Promise<any> => {
+    const res = await api.post('/driver-onboarding/pan', data);
+    return res.data;
+  },
+  verifyRc: async (data: {
+    vehiclePlate: string;
+    vehicleType?: string;
+    vehicleMake?: string;
+    vehicleModel?: string;
+    vehicleYear?: string;
+    vehicleColor?: string;
+    rcFrontImage?: string;
+    rcBackImage?: string;
+    insurancePolicyNumber?: string;
+    insuranceExpiryDate?: string;
+    insuranceDocumentImage?: string;
+  }): Promise<any> => {
+    const res = await api.post('/driver-onboarding/rc', data);
+    return res.data;
+  },
+  submitOnboarding: async (consentDeclaration: boolean = true): Promise<any> => {
+    const res = await api.post('/driver-onboarding/submit', { consentDeclaration });
+    return res.data;
+  },
+  getVerificationStatus: async (): Promise<any> => {
+    const res = await api.get('/driver-onboarding/status');
+    return res.data;
+  },
+  uploadDocumentFile: async (payload: { documentType: string; base64Image?: string; file?: any }): Promise<any> => {
+    if (payload.base64Image) {
+      const res = await api.post('/driver-onboarding/upload', {
+        documentType: payload.documentType,
+        base64Image: payload.base64Image,
+      });
+      return res.data;
+    }
+    const formData = new FormData();
+    formData.append('documentType', payload.documentType);
+    if (payload.file) {
+      formData.append('file', payload.file);
+    }
+    const res = await api.post('/driver-onboarding/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data;
+  },
 };

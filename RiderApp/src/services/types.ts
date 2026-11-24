@@ -67,6 +67,7 @@ export interface RiderProfile {
   email: string;
   phone: string;
   role: string;
+  vehicleType?: string;
   rating: number;
   totalRides: number;
   totalEarnings: number;
@@ -173,4 +174,52 @@ export interface SupportTicket {
   status: 'open' | 'in_progress' | 'resolved' | 'rejected';
   rideId?: string;
   createdAt: string;
-}
+}
+
+export type VerificationBadgeStatus =
+  | 'NOT_SUBMITTED'
+  | 'PENDING'
+  | 'VERIFIED'
+  | 'FAILED'
+  | 'REJECTED'
+  | 'EXPIRED'
+  | 'MANUAL_REVIEW'
+  | 'PROVIDER_UNAVAILABLE';
+
+export interface DriverDocumentItem {
+  id: string;
+  documentType: string;
+  documentNumber?: string;
+  frontImageUrl?: string;
+  backImageUrl?: string;
+  verificationStatus: VerificationBadgeStatus;
+  verificationProvider?: string;
+  rejectionReason?: string;
+  expiryDate?: string;
+  verifiedAt?: string;
+}
+
+export interface DriverOnboardingProgress {
+  onboardingId?: string;
+  currentStep: number;
+  overallStatus: 'not_started' | 'in_progress' | 'pending_review' | 'approved' | 'rejected' | 'verified';
+  stepData?: {
+    step1?: any;
+    step2?: any;
+    step3?: any;
+    step4?: any;
+    step5?: any;
+    step6?: any;
+  };
+  dlStatus?: string;
+  rcStatus?: string;
+  aadharStatus?: string;
+  panStatus?: string;
+  insuranceStatus?: string;
+  documents?: DriverDocumentItem[];
+  driver?: any;
+  vehicle?: any;
+  rejectionReason?: string;
+  canAcceptRides?: boolean;
+}
+

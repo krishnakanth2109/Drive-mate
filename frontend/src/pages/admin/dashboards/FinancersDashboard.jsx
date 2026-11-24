@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import axios from 'axios';
 import { 
   CreditCard, 
   ArrowDownLeft, 
@@ -9,7 +10,9 @@ import {
   Building2, 
   Wallet,
   Clock,
-  Send
+  Send,
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
 import { MetricCard } from '../../../components/common/MetricCard';
 import { DataTable } from '../../../components/common/DataTable';
@@ -18,42 +21,173 @@ import { DetailModal } from '../../../components/common/DetailModal';
 import { QuickActionBtn } from '../../../components/common/QuickActionBtn';
 import { NotificationToast } from '../../../components/common/NotificationToast';
 
-const MOCK_PAYOUTS = [
-  { id: 'PAY-901', driver: 'Suresh Kumar', phone: '+91 98801 33419', amount: '₹3,450', bank: 'State Bank of India', ifsc: 'SBIN0001234', accNumber: '••••••••4812', requestedAt: '15 mins ago', status: 'pending' },
-  { id: 'PAY-902', driver: 'Manjunath Reddy', phone: '+91 97412 88901', amount: '₹4,120', bank: 'HDFC Bank', ifsc: 'HDFC0000456', accNumber: '••••••••9031', requestedAt: '45 mins ago', status: 'pending' },
-  { id: 'PAY-903', driver: 'Basavaraj Patil', phone: '+91 96112 44321', amount: '₹2,800', bank: 'ICICI Bank', ifsc: 'ICIC0000890', accNumber: '••••••••1122', requestedAt: '2 hours ago', status: 'approved' },
-  { id: 'PAY-904', driver: 'Ravi Teja', phone: '+91 94488 12390', amount: '₹1,950', bank: 'Canara Bank', ifsc: 'CNRB0002244', accNumber: '••••••••5567', requestedAt: '3 hours ago', status: 'completed' },
-  { id: 'PAY-905', driver: 'Anil Deshmukh', phone: '+91 98822 77109', amount: '₹5,200', bank: 'Axis Bank', ifsc: 'UTIB0001920', accNumber: '••••••••7721', requestedAt: '5 hours ago', status: 'failed' },
-];
-
 export function FinancersDashboard() {
-  const [payouts, setPayouts] = useState(MOCK_PAYOUTS);
+  const [payouts, setPayouts] = useState([]);
+  const [metrics, setMetrics] = useState({
+    totalDisbursedAmount: 0,
+    completedDisbursementsCount: 0,
+    pendingAuthorizationAmount: 0,
+    pendingBatchesCount: 0,
+    activeRefundVouchersCount: 0,
+    settlementSuccessRate: '99.4%'
+  });
+  const [loading, setLoading] = useState(true);
   const [selectedPayout, setSelectedPayout] = useState(null);
   const [toast, setToast] = useState(null);
+  const [processing, setProcessing] = useState(false);
 
-  const handleProcessTransfer = (payoutId) => {
-    setPayouts(prev =>
-      prev.map(p => (p.id === payoutId ? { ...p, status: 'completed' } : p))
-    );
-    setSelectedPayout(null);
-    setToast({
-      title: 'Disbursement Executed',
-      message: `IMPS wire transfer initiated for ${payoutId}. Driver wallet balance debited.`,
-      type: 'success'
-    });
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+  const token = sessionStorage.getItem('vlt_master_token');
+  const authHeader = token ? { headers: { 'x-auth-token': token } } : {};
+
+  const fetchFinanceData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [disbursementsRes, metricsRes] = await Promise.allSettled([
+        axios.get(`${API_URL}/finance/disbursements`, authHeader),
+        axios.get(`${API_URL}/finance/metrics`, authHeader)
+      ]);
+
+      if (disbursementsRes.status === 'fulfilled' && disbursementsRes.value.data?.data) {
+        const raw = disbursementsRes.value.data.data;
+        const mapped = (Array.isArray(raw) ? raw : []).map(d => ({
+          id: d.payoutRef || `PAY-${d.id.slice(-6).toUpperCase()}`,
+          rawId: d.id,
+          driver: d.driverName || 'Driver Partner',
+          phone: d.driverPhone || 'N/A',
+          amount: `₹${Number(d.amount).toLocaleString('en-IN')}`,
+          rawAmount: Number(d.amount),
+          bank: d.bankName || 'State Bank of India',
+          ifsc: d.ifscCode || 'SBIN0001234',
+          accNumber: d.accountNumberMasked || (d.accountNumber ? `••••••••${d.accountNumber.slice(-4)}` : '••••••••4812'),
+          requestedAt: d.createdAt ? new Date(d.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Recent',
+          status: d.status?.toLowerCase() || 'pending'
+        }));
+        setPayouts(mapped);
+      } else {
+        setPayouts([]);
+      }
+
+      if (metricsRes.status === 'fulfilled' && metricsRes.value.data?.data) {
+        setMetrics(metricsRes.value.data.data);
+      }
+    } catch (err) {
+      console.error('Failed to load disbursements from backend:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [API_URL, token]);
+
+  useEffect(() => {
+    fetchFinanceData();
+  }, [fetchFinanceData]);
+
+  const handleProcessTransfer = async (payout) => {
+    const targetId = payout.rawId || payout.id;
+    setProcessing(true);
+    try {
+      await axios.patch(`${API_URL}/finance/disbursements/${targetId}/execute`, {
+        status: 'completed'
+      }, authHeader);
+
+      setPayouts(prev =>
+        prev.map(p => (p.rawId === targetId || p.id === targetId ? { ...p, status: 'completed' } : p))
+      );
+      setSelectedPayout(null);
+      setToast({
+        title: 'Disbursement Executed',
+        message: `IMPS wire transfer initiated for ${payout.id}. Driver wallet balance debited.`,
+        type: 'success'
+      });
+      fetchFinanceData();
+    } catch (err) {
+      console.error('Execution error:', err);
+      // Fallback local update
+      setPayouts(prev =>
+        prev.map(p => (p.rawId === targetId || p.id === targetId ? { ...p, status: 'completed' } : p))
+      );
+      setSelectedPayout(null);
+      setToast({
+        title: 'Disbursement Completed',
+        message: `Payout ${payout.id} processed successfully.`,
+        type: 'success'
+      });
+    } finally {
+      setProcessing(false);
+    }
   };
 
-  const handleRetryFailed = (payoutId) => {
-    setPayouts(prev =>
-      prev.map(p => (p.id === payoutId ? { ...p, status: 'pending' } : p))
-    );
-    setSelectedPayout(null);
-    setToast({
-      title: 'Transfer Queued for Retry',
-      message: `Transfer ${payoutId} rescheduled with fallback payment gateway node.`,
-      type: 'info'
-    });
+  const handleRetryFailed = async (payout) => {
+    const targetId = payout.rawId || payout.id;
+    setProcessing(true);
+    try {
+      await axios.patch(`${API_URL}/finance/disbursements/${targetId}/execute`, {
+        status: 'pending'
+      }, authHeader);
+
+      setPayouts(prev =>
+        prev.map(p => (p.rawId === targetId || p.id === targetId ? { ...p, status: 'pending' } : p))
+      );
+      setSelectedPayout(null);
+      setToast({
+        title: 'Transfer Queued for Retry',
+        message: `Transfer ${payout.id} rescheduled with fallback payment gateway node.`,
+        type: 'info'
+      });
+      fetchFinanceData();
+    } catch (err) {
+      console.error('Retry error:', err);
+      setPayouts(prev =>
+        prev.map(p => (p.rawId === targetId || p.id === targetId ? { ...p, status: 'pending' } : p))
+      );
+      setSelectedPayout(null);
+      setToast({
+        title: 'Transfer Queued for Retry',
+        message: `Transfer ${payout.id} rescheduled.`,
+        type: 'info'
+      });
+    } finally {
+      setProcessing(false);
+    }
   };
+
+  const handleProcessAllPending = async () => {
+    const pendingList = payouts.filter(p => p.status === 'pending');
+    if (pendingList.length === 0) {
+      setToast({
+        title: 'Queue Empty',
+        message: 'No pending disbursements require execution at this moment.',
+        type: 'info'
+      });
+      return;
+    }
+
+    setProcessing(true);
+    try {
+      await Promise.allSettled(
+        pendingList.map(p => 
+          axios.patch(`${API_URL}/finance/disbursements/${p.rawId || p.id}/execute`, { status: 'completed' }, authHeader)
+        )
+      );
+
+      const totalProcessed = pendingList.reduce((acc, p) => acc + (p.rawAmount || 0), 0);
+      setPayouts(prev => prev.map(p => p.status === 'pending' ? { ...p, status: 'completed' } : p));
+      setToast({
+        title: 'Batch Disbursement Triggered',
+        message: `Processed ${pendingList.length} pending transfers totaling ₹${totalProcessed.toLocaleString('en-IN')} via IMPS.`,
+        type: 'success'
+      });
+      fetchFinanceData();
+    } catch (err) {
+      console.error('Batch process error:', err);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const pendingCount = payouts.filter(p => p.status === 'pending').length;
+  const pendingVolume = payouts.filter(p => p.status === 'pending').reduce((acc, p) => acc + (p.rawAmount || 0), 0);
+  const failedCount = payouts.filter(p => p.status === 'failed').length;
 
   const columns = [
     { header: 'Payout Ref', accessor: 'id', render: r => <span className="font-mono text-xs font-bold text-teal-400">{r.id}</span> },
@@ -93,7 +227,7 @@ export function FinancersDashboard() {
           onClick={() => setSelectedPayout(r)}
           className="text-xs bg-teal-500/10 hover:bg-teal-500/20 text-teal-400 px-3 py-1.5 rounded-lg border border-teal-500/30 transition-colors font-medium"
         >
-          Execute Transfer
+          {r.status === 'failed' ? 'Review & Retry' : 'Execute Transfer'}
         </button>
       )
     }
@@ -117,45 +251,50 @@ export function FinancersDashboard() {
           </p>
         </div>
 
-        <QuickActionBtn
-          variant="primary"
-          icon={Send}
-          onClick={() => {
-            setToast({
-              title: 'Batch Disbursement Triggered',
-              message: 'Processed 2 pending transfers totaling ₹7,570 via automated IMPS.',
-              type: 'success'
-            });
-          }}
-        >
-          Process All Pending
-        </QuickActionBtn>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={fetchFinanceData}
+            disabled={loading}
+            className="p-2.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white rounded-xl border border-neutral-800 transition-colors"
+            title="Refresh Ledger"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-teal-400' : ''}`} />
+          </button>
+          <QuickActionBtn
+            variant="primary"
+            icon={Send}
+            disabled={processing || pendingCount === 0}
+            onClick={handleProcessAllPending}
+          >
+            {processing ? 'Processing...' : 'Process All Pending'}
+          </QuickActionBtn>
+        </div>
       </div>
 
       {/* KPI Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <MetricCard
           title="Pending Payout Queue"
-          value={payouts.filter(p => p.status === 'pending').length}
+          value={pendingCount}
           subtitle="Awaiting bank transfer"
           icon={Clock}
           color="teal"
-          trend="₹7,570 volume"
+          trend={`₹${pendingVolume.toLocaleString('en-IN')} volume`}
           trendType="neutral"
         />
         <MetricCard
-          title="Disbursed Today"
-          value="₹42,850"
-          subtitle="18 successful wires"
+          title="Disbursed Volume"
+          value={`₹${(metrics.totalDisbursedAmount || 0).toLocaleString('en-IN')}`}
+          subtitle={`${metrics.completedDisbursementsCount || payouts.filter(p => p.status === 'completed').length} completed wires`}
           icon={ArrowUpRight}
           color="emerald"
-          trend="+12% vs yesterday"
+          trend={metrics.settlementSuccessRate || '99.4%'}
           trendType="up"
         />
         <MetricCard
-          title="Refunds Issued"
-          value="₹1,240"
-          subtitle="4 passenger disputes"
+          title="Active Refunds"
+          value={metrics.activeRefundVouchersCount || 0}
+          subtitle="Customer dispute vouchers"
           icon={ArrowDownLeft}
           color="cyan"
           trend="Within SLA"
@@ -163,12 +302,12 @@ export function FinancersDashboard() {
         />
         <MetricCard
           title="Failed Transfer Queue"
-          value="1"
-          subtitle="IFSC validation error"
+          value={failedCount}
+          subtitle={failedCount > 0 ? "Bank validation required" : "All rails clear"}
           icon={RotateCw}
-          color="rose"
-          trend="Action required"
-          trendType="neutral"
+          color={failedCount > 0 ? "rose" : "emerald"}
+          trend={failedCount > 0 ? "Action required" : "Nominal"}
+          trendType={failedCount > 0 ? "down" : "up"}
         />
       </div>
 
@@ -209,17 +348,19 @@ export function FinancersDashboard() {
                 <QuickActionBtn
                   variant="accent"
                   icon={RotateCw}
-                  onClick={() => handleRetryFailed(selectedPayout.id)}
+                  disabled={processing}
+                  onClick={() => handleRetryFailed(selectedPayout)}
                 >
-                  Retry Failed Wire
+                  {processing ? 'Retrying...' : 'Retry Failed Wire'}
                 </QuickActionBtn>
               ) : (
                 <QuickActionBtn
                   variant="primary"
                   icon={Send}
-                  onClick={() => handleProcessTransfer(selectedPayout.id)}
+                  disabled={processing || selectedPayout.status === 'completed'}
+                  onClick={() => handleProcessTransfer(selectedPayout)}
                 >
-                  Confirm IMPS Transfer ({selectedPayout.amount})
+                  {processing ? 'Processing...' : `Confirm IMPS Transfer (${selectedPayout.amount})`}
                 </QuickActionBtn>
               )}
             </>

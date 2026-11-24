@@ -15,7 +15,11 @@ import {
   Headphones,
   CreditCard,
   Radio,
-  FileText
+  FileText,
+  Fingerprint,
+  Clock,
+  FileCheck,
+  ChevronDown
 } from 'lucide-react';
 import { useRole } from '../../context/RoleContext';
 import { RoleBadge } from '../../components/common/RoleBadge';
@@ -74,6 +78,50 @@ export function MasterLayout() {
       path: '/master/access-control/roles', 
       icon: Lock 
     },
+    { 
+      name: 'Staff Administration', 
+      path: '/master/admins', 
+      icon: ShieldCheck 
+    },
+  ];
+
+  const verificationNavItems = [
+    { 
+      name: 'Driver Registrations', 
+      path: '/master/verification/registrations', 
+      icon: Users 
+    },
+    { 
+      name: 'Driving Licence Verification', 
+      path: '/master/verification/dl', 
+      icon: FileCheck 
+    },
+    { 
+      name: 'Aadhaar Verification', 
+      path: '/master/verification/aadhaar', 
+      icon: Fingerprint 
+    },
+    { 
+      name: 'PAN Verification', 
+      path: '/master/verification/pan', 
+      icon: CreditCard 
+    },
+    { 
+      name: 'Vehicle RC Verification', 
+      path: '/master/verification/rc', 
+      icon: Car 
+    },
+    { 
+      name: 'Insurance & Documents', 
+      path: '/master/verification/insurance', 
+      icon: FileText 
+    },
+    { 
+      name: 'Pending Reviews', 
+      path: '/master/verification/pending', 
+      icon: Clock,
+      badge: true
+    },
   ];
 
   const SidebarContent = () => (
@@ -101,33 +149,82 @@ export function MasterLayout() {
       </div>
 
       {/* Nav items */}
-      <nav className="flex-1 px-4 py-5 space-y-1.5 overflow-y-auto">
-        {navItems.map((item) => {
-          const isActive = location.pathname === item.path || (item.name === 'Dashboard' && location.pathname.startsWith('/master/dashboard'));
+      <nav className="flex-1 px-4 py-4 space-y-4 overflow-y-auto">
+        {/* Core Operations Menu */}
+        <div>
+          <p className="px-3 pb-2 text-[10px] uppercase font-bold text-neutral-500 tracking-wider">
+            Operations Portal
+          </p>
+          <div className="space-y-1">
+            {navItems.map((item) => {
+              const isActive = location.pathname === item.path || (item.name === 'Dashboard' && location.pathname.startsWith('/master/dashboard'));
 
-          return (
-            <NavLink
-              key={item.name}
-              to={item.path}
-              onClick={() => setIsMobileMenuOpen(false)}
-              className={`
-                flex items-center px-4 py-2.5 rounded-xl transition-all duration-150 group relative text-xs md:text-sm font-medium
-                ${isActive 
-                  ? 'bg-emerald-500/10 text-emerald-400 font-bold' 
-                  : 'text-neutral-400 hover:bg-neutral-800/60 hover:text-white'}
-              `}
-            >
-              <item.icon className={`w-4 h-4 mr-3 transition-colors ${isActive ? 'text-emerald-400' : 'text-neutral-500 group-hover:text-neutral-300'}`} />
-              <span className="truncate">{item.name}</span>
-              {isActive && (
-                <motion.div 
-                  layoutId="activeIndicator"
-                  className="absolute left-0 w-1 h-6 bg-emerald-500 rounded-r-full" 
-                />
-              )}
-            </NavLink>
-          );
-        })}
+              return (
+                <NavLink
+                  key={item.name}
+                  to={item.path}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={`
+                    flex items-center px-4 py-2.5 rounded-xl transition-all duration-150 group relative text-xs md:text-sm font-medium
+                    ${isActive 
+                      ? 'bg-emerald-500/10 text-emerald-400 font-bold' 
+                      : 'text-neutral-400 hover:bg-neutral-800/60 hover:text-white'}
+                  `}
+                >
+                  <item.icon className={`w-4 h-4 mr-3 transition-colors ${isActive ? 'text-emerald-400' : 'text-neutral-500 group-hover:text-neutral-300'}`} />
+                  <span className="truncate">{item.name}</span>
+                  {isActive && (
+                    <motion.div 
+                      layoutId="activeIndicator"
+                      className="absolute left-0 w-1 h-6 bg-emerald-500 rounded-r-full" 
+                    />
+                  )}
+                </NavLink>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 7-Step Driver Verification & Sandbox KYC Section */}
+        <div>
+          <div className="px-3 pb-2 flex items-center justify-between text-[10px] uppercase font-bold text-emerald-400 tracking-wider">
+            <span>Driver Verification</span>
+            <span className="px-1.5 py-0.5 rounded text-[9px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+              Sandbox
+            </span>
+          </div>
+          <div className="space-y-1">
+            {verificationNavItems.map((item) => {
+              const isActive = location.pathname === item.path;
+
+              return (
+                <NavLink
+                  key={item.name}
+                  to={item.path}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={`
+                    flex items-center px-4 py-2.5 rounded-xl transition-all duration-150 group relative text-xs md:text-sm font-medium
+                    ${isActive 
+                      ? 'bg-emerald-500/10 text-emerald-400 font-bold' 
+                      : 'text-neutral-400 hover:bg-neutral-800/60 hover:text-white'}
+                  `}
+                >
+                  <item.icon className={`w-4 h-4 mr-3 transition-colors ${isActive ? 'text-emerald-400' : 'text-neutral-500 group-hover:text-neutral-300'}`} />
+                  <span className="truncate">{item.name}</span>
+                  {item.badge && (
+                    <span className="ml-auto w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                  )}
+                  {isActive && (
+                    <motion.div 
+                      layoutId="activeIndicatorVerification"
+                      className="absolute left-0 w-1 h-6 bg-emerald-500 rounded-r-full" 
+                    />
+                  )}
+                </NavLink>
+              );
+            })}
+          </div>
+        </div>
       </nav>
 
       {/* User profile & logout */}

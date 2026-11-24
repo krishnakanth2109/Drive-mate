@@ -1,15 +1,19 @@
+import 'dotenv/config';
 import crypto from 'crypto';
 import Razorpay from 'razorpay';
 import { prisma } from '../config/prisma.js';
 import { ApiError } from '../utils/ApiError.js';
 
-// Initialize Razorpay SDK instance safely
-const razorpayKeyId = process.env.RAZORPAY_KEY_ID || 'rzp_test_placeholder';
-const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET || 'rzp_secret_placeholder';
+// Safe dynamic getters with reliable test fallbacks
+export const getRazorpayKeyId = (): string =>
+  process.env.RAZORPAY_KEY_ID?.trim() || 'rzp_test_SgtZz5GYGtOM5F';
+
+export const getRazorpayKeySecret = (): string =>
+  process.env.RAZORPAY_KEY_SECRET?.trim() || 'CKHn0hMFVvCnvlWly2301mUl';
 
 export const razorpay = new Razorpay({
-  key_id: razorpayKeyId,
-  key_secret: razorpayKeySecret,
+  key_id: getRazorpayKeyId(),
+  key_secret: getRazorpayKeySecret(),
 });
 
 export const generateId = (): string => crypto.randomBytes(12).toString('hex');
@@ -164,7 +168,7 @@ export async function createTopupOrder(
         amount: Number(existingOrder.amount),
         currency: existingOrder.currency,
         receipt: existingOrder.receipt,
-        keyId: razorpayKeyId,
+        keyId: getRazorpayKeyId(),
         status: existingOrder.status,
       };
     }
@@ -213,7 +217,7 @@ export async function createTopupOrder(
     amountPaise: savedOrder.amountPaise,
     currency: savedOrder.currency,
     receipt: savedOrder.receipt,
-    keyId: razorpayKeyId,
+    keyId: getRazorpayKeyId(),
     status: savedOrder.status,
   };
 }
@@ -265,7 +269,7 @@ export async function verifyTopupPayment(
 
   // 2. Validate cryptographic signature using HMAC SHA256 timing-safe comparison
   const expectedSignature = crypto
-    .createHmac('sha256', razorpayKeySecret)
+    .createHmac('sha256', getRazorpayKeySecret())
     .update(`${razorpay_order_id}|${razorpay_payment_id}`)
     .digest('hex');
 
@@ -669,7 +673,7 @@ export async function handleRazorpayWebhook(rawBody: Buffer | string, signature:
     throw new ApiError(400, 'Missing webhook signature');
   }
 
-  const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || razorpayKeySecret;
+  const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || getRazorpayKeySecret();
   const bodyString = Buffer.isBuffer(rawBody) ? rawBody.toString('utf8') : String(rawBody);
 
   const expectedSignature = crypto
@@ -703,7 +707,7 @@ export async function handleRazorpayWebhook(rawBody: Buffer | string, signature:
 
       if (order && order.status !== 'paid') {
         const dummySig = crypto
-          .createHmac('sha256', razorpayKeySecret)
+          .createHmac('sha256', getRazorpayKeySecret())
           .update(`${orderId}|${paymentId}`)
           .digest('hex');
 
@@ -759,7 +763,7 @@ export async function simulateTestPayment(
 
   const simulatedPaymentId = `pay_test_${crypto.randomBytes(8).toString('hex')}`;
   const simulatedSignature = crypto
-    .createHmac('sha256', razorpayKeySecret)
+    .createHmac('sha256', getRazorpayKeySecret())
     .update(`${orderId}|${simulatedPaymentId}`)
     .digest('hex');
 

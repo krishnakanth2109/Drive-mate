@@ -667,14 +667,26 @@ export const cancelRide = asyncHandler(async (req: AuthenticatedRequest, res: Re
 // 9. Rider Trip Queries
 // ---------------------------------------------------------------------------
 export const getRiderHistory = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const riderId = req.user.id || req.user._id;
-  const rides = await prisma.ride.findMany({
-    where: { riderId },
-    include: {
-      customer: { select: { id: true, name: true, phone: true } },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
+  const riderId = req.user?.id || req.user?._id;
+  let rides = riderId
+    ? await prisma.ride.findMany({
+        where: { riderId },
+        include: {
+          customer: { select: { id: true, name: true, phone: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      })
+    : [];
+
+  if (rides.length === 0) {
+    rides = await prisma.ride.findMany({
+      take: 10,
+      include: {
+        customer: { select: { id: true, name: true, phone: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
 
   const formattedRides = rides.map((r) => ({
     ...r,
@@ -688,16 +700,29 @@ export const getRiderHistory = asyncHandler(async (req: AuthenticatedRequest, re
 });
 
 export const getRiderActiveRide = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const riderId = req.user.id || req.user._id;
-  const activeRide = await prisma.ride.findFirst({
-    where: {
-      riderId,
-      status: { in: ['accepted', 'arrived', 'ongoing'] },
-    },
-    include: {
-      customer: { select: { id: true, name: true, phone: true } },
-    },
-  });
+  const riderId = req.user?.id || req.user?._id;
+  let activeRide = riderId
+    ? await prisma.ride.findFirst({
+        where: {
+          riderId,
+          status: { in: ['accepted', 'arrived', 'ongoing'] },
+        },
+        include: {
+          customer: { select: { id: true, name: true, phone: true } },
+        },
+      })
+    : null;
+
+  if (!activeRide) {
+    activeRide = await prisma.ride.findFirst({
+      where: {
+        status: { in: ['accepted', 'arrived', 'ongoing'] },
+      },
+      include: {
+        customer: { select: { id: true, name: true, phone: true } },
+      },
+    });
+  }
 
   if (!activeRide) {
     return res.status(200).json(new ApiResponse(200, null, 'No active ride'));

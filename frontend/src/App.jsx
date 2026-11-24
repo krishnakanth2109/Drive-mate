@@ -25,6 +25,11 @@ import { FinancePayoutsView } from './pages/admin/views/FinancePayoutsView';
 import { UsersDirectoryView } from './pages/admin/views/UsersDirectoryView';
 import { AuditLogsView } from './pages/admin/views/AuditLogsView';
 
+// 7 Driver Verification Suite Views
+import { DriverRegistrationsView } from './pages/admin/verification/DriverRegistrationsView';
+import { DocumentStreamView } from './pages/admin/verification/DocumentStreamView';
+import { PendingReviewsView } from './pages/admin/verification/PendingReviewsView';
+
 // RBAC & Management
 import { AdminManagement } from './pages/admin/AdminManagement';
 import { RolesList } from './pages/admin/rbac/RolesList';
@@ -109,6 +114,15 @@ function App() {
             <Route path="/master/admins" element={<AdminManagement />} />
             <Route path="/master/access-control/roles" element={<RolesList />} />
             <Route path="/master/access-control/roles/create" element={<CreateRole />} />
+
+            {/* 7 Driver Verification Suite Routes */}
+            <Route path="/master/verification/registrations" element={<DriverRegistrationsView />} />
+            <Route path="/master/verification/dl" element={<DocumentStreamView defaultType="DRIVING_LICENSE" title="Driving Licence Verification Stream" />} />
+            <Route path="/master/verification/aadhaar" element={<DocumentStreamView defaultType="AADHAAR" title="Aadhaar KYC Verification Stream" />} />
+            <Route path="/master/verification/pan" element={<DocumentStreamView defaultType="PAN" title="PAN Card Verification Stream (Sandbox)" />} />
+            <Route path="/master/verification/rc" element={<DocumentStreamView defaultType="RC" title="Vehicle RC Verification Stream" />} />
+            <Route path="/master/verification/insurance" element={<DocumentStreamView defaultType="INSURANCE" title="Insurance & Vehicle Documents Stream" />} />
+            <Route path="/master/verification/pending" element={<PendingReviewsView />} />
 
             {/* Fallback */}
             <Route path="/master/*" element={<DashboardRedirect />} />

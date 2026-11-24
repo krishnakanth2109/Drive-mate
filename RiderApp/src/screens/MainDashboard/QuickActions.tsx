@@ -22,6 +22,8 @@ const actions = [
   { id: '10', title: 'Offers & Promos', icon: 'gift', color: '#00BCD4', route: 'Offers' },
   { id: '11', title: 'Incentives', icon: 'trophy', color: '#FFC107', route: 'Incentives' },
   { id: '12', title: 'Outstation', icon: 'map', color: '#8BC34A', route: 'OutstationOptIn' },
+  { id: '13', title: 'Go To Area', icon: 'navigate-circle', color: '#f72585', route: 'GoToArea' },
+  { id: '14', title: 'Performance', icon: 'ribbon', color: '#FFD700', route: 'Performance' },
 ];
 
 export default function QuickActionsScreen({ navigation }: Props) {

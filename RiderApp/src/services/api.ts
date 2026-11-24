@@ -1,8 +1,21 @@
 import axios from 'axios';
 import { io, Socket } from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+const resolveBaseUrl = (): string => {
+  if (process.env.EXPO_PUBLIC_API_URL?.trim()) {
+    return process.env.EXPO_PUBLIC_API_URL.trim();
+  }
+  const hostUri = Constants.expoConfig?.hostUri;
+  if (hostUri) {
+    const ip = hostUri.split(':')[0];
+    return `http://${ip}:5000`;
+  }
+  return 'http://localhost:5000';
+};
+
+const BASE_URL = resolveBaseUrl();
 
 // Clean axios instance — no custom adapter (was crashing on Axios v1.x)
 export const api = axios.create({

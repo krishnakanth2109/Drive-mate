@@ -11,7 +11,6 @@ import {
   Alert,
   KeyboardAvoidingView,
 } from 'react-native';
-import { DrawerActions } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import WebMapView, { RoutePoint } from '../../../components/WebMapView';
 import PlaceAutocompleteInput from '../../../components/PlaceAutocompleteInput';
@@ -781,43 +780,51 @@ export default function CustomerDashboard({ navigation }: any) {
 
       {/* Top Bar with Personalized Customer Greeting */}
       <View style={styles.topBar}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <TouchableOpacity
-            style={styles.menuBtn}
-            onPress={() => {
-              try {
-                if (navigation.dispatch) {
-                  navigation.dispatch(DrawerActions.toggleDrawer());
-                } else if (navigation.getParent?.()?.toggleDrawer) {
-                  navigation.getParent().toggleDrawer();
-                } else if (navigation.toggleDrawer) {
-                  navigation.toggleDrawer();
-                }
-              } catch (_) {}
-            }}
-          >
-            <Ionicons name="menu" size={24} color="#1a1a2e" />
-          </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <View style={styles.appBrand}>
-            <Ionicons name="car-sport" size={16} color="#fff" style={{ marginRight: 5 }} />
+            <Ionicons name="car-sport" size={17} color="#fff" style={{ marginRight: 6 }} />
             <Text style={styles.brandText}>DRIVEMATE</Text>
           </View>
         </View>
 
-        {/* Personalized Profile Pill */}
-        <TouchableOpacity
-          style={styles.profilePill}
-          onPress={() => navigation.navigate('Profile')}
-          activeOpacity={0.8}
-        >
-          <View style={styles.profileAvatarMini}>
-            <Text style={styles.avatarMiniText}>{initialLetter}</Text>
-          </View>
-          <Text style={styles.profilePillText} numberOfLines={1}>
-            Hi, {firstName}
-          </Text>
-          <Ionicons name="chevron-forward" size={13} color="#888" />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {/* Quick Wallet Pill */}
+          <TouchableOpacity
+            style={styles.walletPill}
+            onPress={() => navigation.navigate('Wallet')}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="wallet-outline" size={15} color="#f72585" />
+            <Text style={styles.walletPillText}>
+              ₹{Math.max(0, Number(currentUser?.walletBalance) || 0).toFixed(0)}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Quick Notifications Bell */}
+          <TouchableOpacity
+            style={styles.notificationBtn}
+            onPress={() => navigation.navigate('Notifications')}
+            activeOpacity={0.8}
+            accessibilityLabel="Notifications"
+          >
+            <Ionicons name="notifications-outline" size={18} color="#1a1a2e" />
+          </TouchableOpacity>
+
+          {/* Personalized Profile Pill */}
+          <TouchableOpacity
+            style={styles.profilePill}
+            onPress={() => navigation.navigate('Profile')}
+            activeOpacity={0.8}
+          >
+            <View style={styles.profileAvatarMini}>
+              <Text style={styles.avatarMiniText}>{initialLetter}</Text>
+            </View>
+            <Text style={styles.profilePillText} numberOfLines={1}>
+              Hi, {firstName}
+            </Text>
+            <Ionicons name="chevron-forward" size={13} color="#888" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Floating Locate Me Button */}
@@ -876,17 +883,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 20,
   },
-  menuBtn: {
+  notificationBtn: {
     backgroundColor: '#fff',
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 5,
+    elevation: 4,
     shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
   },
   appBrand: {
     backgroundColor: '#f72585',
@@ -1257,6 +1266,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#e63946',
     fontWeight: '700',
+  },
+  // Quick Wallet Pill
+  walletPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 20,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    gap: 4,
+  },
+  walletPillText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#1a1a2e',
   },
   // Profile Pill & Quick Destination Chips Styles
   profilePill: {

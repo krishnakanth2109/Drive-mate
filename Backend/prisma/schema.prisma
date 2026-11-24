@@ -39,11 +39,6 @@ model Customer {
   updatedAt           DateTime        @updatedAt @map("updated_at")
 
   rides               Ride[]          @relation("CustomerRides")
-  claims              Claim[]
-  notifications       Notification[]
-  paymentMethods      PaymentMethod[]
-  rewards             Reward[]
-  transactions        Transaction[]
   refundVouchers      RefundVoucher[]
   wallet              Wallet?
   communityPosts      CommunityRidePost[]
@@ -196,6 +191,8 @@ model Admin {
   executedDisbursements      Disbursement[]            @relation("ExecutedDisbursements")
   authorizedRefundVouchers   RefundVoucher[]           @relation("AuthorizedRefunds")
   authorizedSettlementBatches SettlementBatch[]        @relation("AuthorizedSettlementBatches")
+  reviewedDocuments          DriverDocument[]          @relation("DocumentReviewer")
+  verificationAudits         DriverVerificationAudit[] @relation("AuditAdmin")
 
   @@map("admins")
 }
@@ -302,26 +299,83 @@ model SupportEscalation {
 // =========================================================================
 
 model DriverOnboarding {
-  id                       String              @id
-  driverId                 String              @unique @map("driver_id")
-  coachId                  String?             @map("coach_id")
-  dlStatus                 String              @default("Pending") @map("dl_status") // Approved, Pending, Required
-  rcStatus                 String              @default("Pending") @map("rc_status")
-  aadharStatus             String              @default("Pending") @map("aadhar_status")
-  policeVerificationStatus String              @default("Required") @map("police_verification_status")
-  trainingStatus           String              @default("Not Started") @map("training_status") // Not Started, Module 1/4, Module 2/4, Module 3/4, Completed (100%)
-  trainingScore            Int?                @default(0) @map("training_score")
-  overallStatus            String              @default("pending_review") @map("overall_status") // pending_review, in_progress, approved, rejected
-  coachNotes               String?             @map("coach_notes")
-  approvedAt               DateTime?           @map("approved_at")
-  createdAt                DateTime            @default(now()) @map("created_at")
-  updatedAt                DateTime            @updatedAt @map("updated_at")
+  id                       String                    @id
+  driverId                 String                    @unique @map("driver_id")
+  coachId                  String?                   @map("coach_id")
+  currentStep              Int                       @default(1) @map("current_step")
+  stepData                 Json?                     @map("step_data")
+  dlStatus                 String                    @default("Pending") @map("dl_status") // Approved, Pending, Required, Verified, Rejected
+  rcStatus                 String                    @default("Pending") @map("rc_status")
+  aadharStatus             String                    @default("Pending") @map("aadhar_status")
+  panStatus                String                    @default("NOT_SUBMITTED") @map("pan_status")
+  insuranceStatus          String                    @default("NOT_SUBMITTED") @map("insurance_status")
+  policeVerificationStatus String                    @default("Required") @map("police_verification_status")
+  trainingStatus           String                    @default("Not Started") @map("training_status") // Not Started, Module 1/4, Module 2/4, Module 3/4, Completed (100%)
+  trainingScore            Int?                      @default(0) @map("training_score")
+  overallStatus            String                    @default("pending_review") @map("overall_status") // pending_review, in_progress, approved, rejected, verified
+  coachNotes               String?                   @map("coach_notes")
+  rejectionReason          String?                   @map("rejection_reason")
+  consentGiven             Boolean                   @default(false) @map("consent_given")
+  consentTimestamp         DateTime?                 @map("consent_timestamp")
+  digilockerSessionId      String?                   @map("digilocker_session_id")
+  submissionDate           DateTime?                 @map("submission_date")
+  approvedAt               DateTime?                 @map("approved_at")
+  createdAt                DateTime                  @default(now()) @map("created_at")
+  updatedAt                DateTime                  @updatedAt @map("updated_at")
 
-  driver                   Rider               @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  coach                    Admin?              @relation("AssignedFleetCoach", fields: [coachId], references: [id], onDelete: SetNull)
+  driver                   Rider                     @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  coach                    Admin?                    @relation("AssignedFleetCoach", fields: [coachId], references: [id], onDelete: SetNull)
   inspections              VehicleInspection[]
+  documents                DriverDocument[]
+  audits                   DriverVerificationAudit[]
 
   @@map("driver_onboardings")
+}
+
+model DriverDocument {
+  id                   String                    @id
+  onboardingId         String                    @map("onboarding_id")
+  driverId             String                    @map("driver_id")
+  documentType         String                    @map("document_type") // DRIVING_LICENSE, AADHAAR, PAN, RC, INSURANCE, FITNESS_CERTIFICATE, PERMIT, OTHER
+  documentNumber       String?                   @map("document_number") // Stored / masked where sensitive
+  frontImageUrl        String?                   @map("front_image_url")
+  backImageUrl         String?                   @map("back_image_url")
+  verificationStatus   String                    @default("NOT_SUBMITTED") @map("verification_status") // NOT_SUBMITTED, PENDING, VERIFIED, FAILED, REJECTED, EXPIRED, MANUAL_REVIEW, PROVIDER_UNAVAILABLE
+  verificationProvider String?                   @default("manual") @map("verification_provider") // sandbox, digilocker, manual
+  providerReferenceId  String?                   @map("provider_reference_id")
+  providerResponseRaw  Json?                     @map("provider_response_raw")
+  expiryDate           DateTime?                 @map("expiry_date")
+  verifiedAt           DateTime?                 @map("verified_at")
+  rejectionReason      String?                   @map("rejection_reason")
+  adminNotes           String?                   @map("admin_notes")
+  reviewedByAdminId    String?                   @map("reviewed_by_admin_id")
+  createdAt            DateTime                  @default(now()) @map("created_at")
+  updatedAt            DateTime                  @updatedAt @map("updated_at")
+
+  onboarding           DriverOnboarding          @relation(fields: [onboardingId], references: [id], onDelete: Cascade)
+  reviewer             Admin?                    @relation("DocumentReviewer", fields: [reviewedByAdminId], references: [id], onDelete: SetNull)
+  audits               DriverVerificationAudit[]
+
+  @@map("driver_documents")
+}
+
+model DriverVerificationAudit {
+  id             String           @id
+  onboardingId   String           @map("onboarding_id")
+  documentId     String?          @map("document_id")
+  adminId        String?          @map("admin_id")
+  action         String           // SUBMITTED, SANDBOX_VERIFIED, SANDBOX_FAILED, ADMIN_APPROVED, ADMIN_REJECTED, REUPLOAD_REQUESTED, RETRY_TRIGGERED
+  previousStatus String?          @map("previous_status")
+  newStatus      String           @map("new_status")
+  reason         String?
+  metadata       Json?
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  onboarding     DriverOnboarding @relation(fields: [onboardingId], references: [id], onDelete: Cascade)
+  document       DriverDocument?  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  admin          Admin?           @relation("AuditAdmin", fields: [adminId], references: [id], onDelete: SetNull)
+
+  @@map("driver_verification_audits")
 }
 
 model VehicleInspection {
@@ -496,7 +550,6 @@ model Claim {
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
-  customer    Customer? @relation(fields: [userId], references: [id], onDelete: Cascade)
   ride        Ride?     @relation(fields: [rideId], references: [id], onDelete: SetNull)
 
   @@map("claims")
@@ -513,8 +566,6 @@ model Notification {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
 
-  customer  Customer? @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@map("notifications")
 }
 
@@ -530,8 +581,6 @@ model PaymentMethod {
   isDefault     Boolean   @default(false) @map("is_default")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
-
-  customer      Customer? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("payment_methods")
 }
@@ -554,8 +603,6 @@ model Reward {
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  customer      Customer? @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@map("rewards")
 }
 
@@ -570,8 +617,6 @@ model Transaction {
   referenceId String?   @map("reference_id")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
-
-  customer    Customer? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("transactions")
 }

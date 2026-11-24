@@ -43,7 +43,8 @@ export default function WalletScreen() {
       Alert.alert('Invalid Amount', 'Please enter a valid payout amount');
       return;
     }
-    if ((wallet?.balance || 0) < amt) {
+    const currentBalance = Number(wallet?.balance) || 0;
+    if (currentBalance < amt) {
       Alert.alert('Insufficient Balance', 'Payout amount exceeds available wallet balance');
       return;
     }
@@ -110,7 +111,7 @@ export default function WalletScreen() {
         {/* Balance Card */}
         <Animated.View entering={ZoomIn.duration(500).springify()} style={styles.balanceCard}>
           <Text style={styles.balanceLabel}>Available Balance</Text>
-          <Text style={styles.balanceAmount}>₹{wallet?.balance?.toFixed(2) || '3,450.00'}</Text>
+          <Text style={styles.balanceAmount}>₹{wallet?.balance !== undefined && wallet?.balance !== null ? Number(wallet.balance).toFixed(2) : '3,450.00'}</Text>
           
           <TouchableOpacity style={styles.transferBtn} onPress={() => setPayoutModalVisible(true)}>
             <Text style={styles.transferBtnText}>Transfer to Bank</Text>
@@ -193,7 +194,7 @@ export default function WalletScreen() {
           <View style={modalStyles.overlay}>
             <View style={modalStyles.content}>
               <Text style={modalStyles.title}>Transfer to Bank</Text>
-              <Text style={modalStyles.sub}>Available Balance: ₹{wallet?.balance?.toFixed(2) || '0.00'}</Text>
+              <Text style={modalStyles.sub}>Available Balance: ₹{wallet?.balance !== undefined && wallet?.balance !== null ? Number(wallet.balance).toFixed(2) : '0.00'}</Text>
               
               <Text style={modalStyles.label}>Amount (₹)</Text>
               <TextInput

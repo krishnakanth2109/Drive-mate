@@ -23,7 +23,9 @@ export default defineConfig([
       },
     },
     rules: {
-      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]|motion' }],
+      'no-unused-vars': ['warn', { varsIgnorePattern: '^[A-Z_]|motion|^_', argsIgnorePattern: '^_' }],
+      'no-empty': 'warn',
+      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
     },
   },
 ])

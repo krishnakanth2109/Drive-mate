@@ -8,6 +8,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 // Screens
 import SplashScreen from './src/screens/Splash/SplashScreen';
 import OnboardingScreen from './src/screens/Onboarding/OnboardingScreen';
+import DriverOnboardingWizard from './src/screens/Onboarding/DriverOnboardingWizard';
 import LoginScreen from './src/screens/Authentication/Login';
 import RegisterScreen from './src/screens/Authentication/Register';
 import OTPVerificationScreen from './src/screens/Authentication/OTPVerification';
@@ -53,19 +54,26 @@ import ContactCustomerScreen from './src/screens/ActiveRide/ContactCustomerScree
 import CancelRideScreen from './src/screens/ActiveRide/CancelRideScreen';
 import RideInfoScreen from './src/screens/ActiveRide/RideInfoScreen';
 
+// Performance & Go To Area Features
+import PerformanceScreen from './src/screens/Account/PerformanceScreen';
+import GoToAreaScreen from './src/screens/MainDashboard/GoToAreaScreen';
+
 import { RiderProvider } from './src/context/RiderContext';
+import { ToastProvider } from './src/context/ToastContext';
 
 const Stack = createStackNavigator();
 
 export default function App() {
   return (
-    <RiderProvider>
-      <NavigationContainer>
-        <StatusBar style="dark" />
-        <Stack.Navigator initialRouteName="Splash">
+    <ToastProvider>
+      <RiderProvider>
+        <NavigationContainer>
+          <StatusBar style="dark" />
+          <Stack.Navigator initialRouteName="Splash">
           {/* Auth Screens */}
           <Stack.Screen name="Splash" component={SplashScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="DriverOnboardingWizard" component={DriverOnboardingWizard} options={{ headerShown: false }} />
           <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Register" component={RegisterScreen} options={{ headerShown: false }} />
           <Stack.Screen name="OTPVerification" component={OTPVerificationScreen} options={{ headerShown: false }} />
@@ -112,8 +120,11 @@ export default function App() {
           <Stack.Screen name="RaiseTicket" component={RaiseTicketScreen} options={{ headerShown: false }} />
           <Stack.Screen name="FAQs" component={FAQsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="ContactSupport" component={ContactSupportScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Performance" component={PerformanceScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="GoToArea" component={GoToAreaScreen} options={{ headerShown: false }} />
         </Stack.Navigator>
       </NavigationContainer>
     </RiderProvider>
-  );
+  </ToastProvider>
+);
 }

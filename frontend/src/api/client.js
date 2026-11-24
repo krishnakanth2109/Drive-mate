@@ -1,14 +1,18 @@
-const BASE_URL = import.meta.env.DEV ? 'http://localhost:8000' : window.location.origin;
+const BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:5000/api' : `${window.location.origin}/api`);
 
 export async function fetchApi(endpoint, options = {}) {
-  const token = sessionStorage.getItem('vlt_token');
+  const token = sessionStorage.getItem('vlt_master_token') || sessionStorage.getItem('vlt_token') || localStorage.getItem('token');
   const headers = {
     'Content-Type': 'application/json',
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...(token ? { 
+      'Authorization': `Bearer ${token}`,
+      'x-auth-token': token
+    } : {}),
     ...options.headers,
   };
 
-  const response = await fetch(`${BASE_URL}${endpoint}`, {
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const response = await fetch(`${BASE_URL}${cleanEndpoint}`, {
     ...options,
     headers,
   });
@@ -17,7 +21,7 @@ export async function fetchApi(endpoint, options = {}) {
     let errorMessage = 'An error occurred';
     try {
       const data = await response.json();
-      errorMessage = data.detail || errorMessage;
+      errorMessage = data.message || data.detail || errorMessage;
     } catch {
       // Ignored
     }

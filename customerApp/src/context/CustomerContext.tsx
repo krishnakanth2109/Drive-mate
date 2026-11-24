@@ -173,6 +173,9 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
       const userStr = await AsyncStorage.getItem('user');
       if (token && userStr) {
         const parsedUser = JSON.parse(userStr);
+        if (parsedUser.walletBalance !== undefined && parsedUser.walletBalance !== null) {
+          parsedUser.walletBalance = Number(parsedUser.walletBalance);
+        }
         setCurrentUser(parsedUser);
         setIsLoggedIn(true);
 
@@ -196,8 +199,12 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
   const saveAuthSession = useCallback(
     async (token: string, user: CustomerUser, rememberMe: boolean = true) => {
       try {
+        const sanitizedUser: CustomerUser = {
+          ...user,
+          walletBalance: user.walletBalance !== undefined && user.walletBalance !== null ? Number(user.walletBalance) : 0,
+        };
         await AsyncStorage.setItem('token', token);
-        await AsyncStorage.setItem('user', JSON.stringify(user));
+        await AsyncStorage.setItem('user', JSON.stringify(sanitizedUser));
         const uid = user._id || user.id;
         if (uid) {
           await AsyncStorage.setItem('userId', uid);
@@ -207,7 +214,7 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
           if (user.email) await AsyncStorage.setItem('saved_email', user.email);
           if (user.phone) await AsyncStorage.setItem('saved_phone', user.phone);
         }
-        setCurrentUser(user);
+        setCurrentUser(sanitizedUser);
         setIsLoggedIn(true);
 
         await connectSocket();

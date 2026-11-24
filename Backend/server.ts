@@ -1,10 +1,13 @@
+import 'dotenv/config';
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import http from 'http';
+import path from 'path';
 import { Server, Socket } from 'socket.io';
 import dotenv from 'dotenv';
 import { connectRedis } from './config/redis.js';
 import { connectPrisma, disconnectPrisma, prisma } from './config/prisma.js';
+import redisService from './services/redisService.js';
 
 import userRoutes from './routes/userRoutes.js';
 import rideRoutes from './routes/rideRoutes.js';
@@ -20,6 +23,8 @@ import financeRoutes from './routes/financeRoutes.js';
 import walletRoutes from './routes/walletRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import communityRoutes from './routes/communityRoutes.js';
+import driverOnboardingRoutes from './routes/driverOnboardingRoutes.js';
+import adminVerificationRoutes from './routes/adminVerificationRoutes.js';
 import { initSettlementScheduler } from './services/settlementScheduler.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -42,11 +47,17 @@ const server = http.createServer(app);
 app.use(cors());
 app.use(
   express.json({
+    limit: '100mb',
     verify: (req: any, res, buf) => {
       req.rawBody = buf;
     },
   })
 );
+app.use(express.urlencoded({ limit: '100mb', extended: true }));
+
+// Serve uploaded documents statically
+app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads')));
+app.use('/uploads', express.static(path.resolve(process.cwd(), 'Backend/uploads')));
 
 // --- Socket.io Setup ---
 const io = new Server(server, {
@@ -77,6 +88,9 @@ app.use('/api/fleet', fleetRoutes);
 app.use('/api/operations', operationsRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/wallet', walletRoutes);
+app.use('/api/driver-onboarding', driverOnboardingRoutes);
+app.use('/api/verification', driverOnboardingRoutes);
+app.use('/api/admin', adminVerificationRoutes);
 
 app.get('/api/config/maps-key', (req: Request, res: Response) => {
   res.json({ key: process.env.GOOGLE_MAPS_API_KEY || '' });
@@ -91,14 +105,42 @@ app.get('/api/health', async (req: Request, res: Response) => {
     pgStatus = 'error';
   }
 
+  const redisHealth = redisService.getStatus();
+
   res.json({
     status: 'ok',
     services: {
       neonPostgres: pgStatus,
-      redis: 'connected (mocked/in-memory)',
+      redis: {
+        status: redisHealth.connected ? 'connected' : 'disconnected',
+        mode: redisHealth.mode,
+        isRealRedis: redisHealth.isRealRedis,
+        stats: redisHealth.stats,
+      },
     },
     timestamp: new Date().toISOString(),
   });
+});
+
+app.get('/api/redis/status', (req: Request, res: Response) => {
+  res.json({
+    success: true,
+    ...redisService.getStatus(),
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get('/api/redis/active-drivers', async (req: Request, res: Response) => {
+  try {
+    const drivers = await redisService.getAllActiveDriverLocations();
+    res.json({
+      success: true,
+      count: drivers.length,
+      drivers,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // --- Global Error Handler ---
@@ -153,14 +195,20 @@ io.on('connection', (socket: Socket) => {
     }
   });
 
-  // 4. Driver Location Update -> Send to Ride Room
-  socket.on('driver_location_update', (data: { rideId: string; lat: number; lng: number; heading?: number }) => {
-    const { rideId, lat, lng, heading } = data;
+  // 4. Driver Location Update -> Send to Ride Room & Fast-cache in Redis
+  socket.on('driver_location_update', (data: { rideId: string; riderId?: string; lat: number; lng: number; heading?: number }) => {
+    const { rideId, riderId, lat, lng, heading } = data;
     io.to(`ride_${rideId}`).emit('driver_location_update', {
       lat,
       lng,
       heading,
     });
+
+    // Fast-cache driver coordinate into Redis
+    const trackingKey = riderId || rideId;
+    if (trackingKey && lat != null && lng != null) {
+      redisService.storeDriverLocation(trackingKey, lat, lng, heading || 0);
+    }
   });
 
   // 5. Real-time Chat functionality for Ride

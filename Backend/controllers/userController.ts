@@ -43,7 +43,10 @@ export const riderRegister = asyncHandler(async (req: AuthenticatedRequest, res:
     },
   });
 
-  res.status(201).json(new ApiResponse(201, null, 'Rider registered successfully'));
+  const payload = { user: { id: rider.id, role: 'rider' } };
+  const token = jwt.sign(payload, process.env.JWT_SECRET || 'fallback_secret', { expiresIn: '30d' });
+
+  res.status(201).json(new ApiResponse(201, { token, user: rider }, 'Rider registered successfully'));
 });
 
 export const riderLogin = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {

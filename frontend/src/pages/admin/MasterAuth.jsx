@@ -123,51 +123,75 @@ export function MasterAuth() {
           </div>
         </div>
 
-        {/* Tab 1: 1-Click Role Logins Grid */}
+        {/* Tab 1: 1-Click Master Admin Launch */}
         {activeTab === 'quick' && (
           <div className="p-8">
             <div className="mb-4 flex items-center justify-between text-xs text-neutral-400">
               <span className="font-semibold uppercase tracking-wider text-neutral-300">
-                Select Any Role to Launch Tailored Dashboard
+                Master Administrator Authentication
               </span>
-              <span>8 Operational Roles Available</span>
+              <span className="text-emerald-400 font-mono">Full Privileges Active</span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+            <div className="max-w-2xl mx-auto">
               {DEMO_PROFILES.map((profile) => {
                 const roleConfig = ROLES[profile.roleId] || ROLES.ADMIN;
-                const IconComponent = ROLE_ICONS[profile.roleId] || ShieldCheck;
 
                 return (
                   <button
                     key={profile.roleId}
                     onClick={() => handleQuickLogin(profile)}
-                    className="p-4 rounded-2xl bg-neutral-950/70 border border-neutral-800 hover:border-neutral-700 hover:bg-neutral-800/40 text-left transition-all duration-200 group flex flex-col justify-between hover:scale-[1.02] cursor-pointer"
+                    className="w-full p-6 rounded-2xl bg-gradient-to-br from-neutral-900 to-neutral-950 border border-emerald-500/30 hover:border-emerald-500/60 text-left transition-all duration-200 group shadow-xl hover:shadow-emerald-500/10 cursor-pointer"
                   >
-                    <div>
-                      <div className="flex items-center justify-between mb-2.5">
-                        <div className={`p-2 rounded-xl ${roleConfig.badgeBg} border`}>
-                          <IconComponent className="w-4 h-4" />
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center space-x-4">
+                        <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 shadow-md">
+                          <ShieldCheck className="w-8 h-8" />
                         </div>
-                        <span className="text-[10px] font-mono text-neutral-500">
-                          {profile.badge}
-                        </span>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-bold text-white text-lg group-hover:text-emerald-400 transition-colors">
+                              {roleConfig.name}
+                            </h3>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                              SUPER PRIVILEGED
+                            </span>
+                          </div>
+                          <p className="text-xs text-neutral-400 mt-0.5">{profile.name} • {profile.email}</p>
+                        </div>
                       </div>
-
-                      <h4 className="font-bold text-white text-sm group-hover:text-emerald-400 transition-colors">
-                        {roleConfig.name}
-                      </h4>
-                      <p className="text-[11px] text-neutral-400 mt-0.5 line-clamp-1">
-                        {profile.name}
-                      </p>
-                      <p className="text-[10px] text-neutral-400 mt-2 line-clamp-2 leading-relaxed">
-                        {roleConfig.description}
-                      </p>
+                      <span className="text-[11px] font-mono text-neutral-500 bg-neutral-900 px-2.5 py-1 rounded-lg border border-neutral-800">
+                        {profile.badge}
+                      </span>
                     </div>
 
-                    <div className="mt-4 pt-2.5 border-t border-neutral-800/80 flex items-center justify-between text-[11px] font-semibold text-emerald-400 opacity-80 group-hover:opacity-100">
-                      <span>Launch Portal</span>
-                      <ArrowRight className="w-3.5 h-3.5 transform group-hover:translate-x-1 transition-transform" />
+                    <p className="text-xs text-neutral-400 mt-4 leading-relaxed">
+                      {roleConfig.description}
+                    </p>
+
+                    {/* Capabilities Badge Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4 pt-4 border-t border-neutral-800/80">
+                      <div className="flex items-center text-xs text-neutral-300">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-2" />
+                        Modify System Roles & Permissions Matrix
+                      </div>
+                      <div className="flex items-center text-xs text-neutral-300">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-2" />
+                        View & Verify Driver Documents (DL, Aadhaar, PAN, RC)
+                      </div>
+                      <div className="flex items-center text-xs text-neutral-300">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-2" />
+                        Live Rides GPS, Fleet Dispatch & Surge Control
+                      </div>
+                      <div className="flex items-center text-xs text-neutral-300">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-2" />
+                        Financial Settlement & Platform Audit Trail
+                      </div>
+                    </div>
+
+                    <div className="mt-5 pt-3 border-t border-neutral-800 flex items-center justify-between text-xs font-bold text-emerald-400">
+                      <span>Launch Master Admin Control Center</span>
+                      <ArrowRight className="w-4 h-4 transform group-hover:translate-x-1.5 transition-transform" />
                     </div>
                   </button>
                 );

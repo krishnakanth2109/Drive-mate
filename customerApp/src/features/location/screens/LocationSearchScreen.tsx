@@ -37,7 +37,7 @@ export default function LocationSearchScreen({ navigation, route }: Props) {
         address: currentAddress || 'Current Location',
       };
       await fetchEstimate(pickup, place);
-      navigation.navigate('MainDrawer');
+      navigation.navigate('MainTabs');
     } else {
       navigation.goBack();
     }

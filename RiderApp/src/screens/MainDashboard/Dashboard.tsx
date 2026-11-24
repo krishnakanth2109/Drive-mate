@@ -1,10 +1,14 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Switch, TouchableOpacity, Platform, Modal, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import RiderWebMapView from '../../components/RiderWebMapView';
 import SwipeButton from '../../components/SwipeButton';
 import DriverInRideSupportModal from '../../components/DriverInRideSupportModal';
 import { RiderProvider, useRider } from '../../context/RiderContext';
+import { useToast } from '../../context/ToastContext';
+import { riderService } from '../../services/riderService';
+import { GO_TO_AREA_STORAGE_KEY } from './GoToAreaScreen';
 
 
 // --- HELPER: Decode Polyline ---
@@ -63,23 +67,98 @@ const MapArea = () => {
 
 // --- COMPONENT: HEADER ---
 const HeaderToggle = ({navigation}: any) => {
-  const { isOnline, toggleOnline, logout } = useRider();
+  const { isOnline, toggleOnline } = useRider();
+  const { showToast } = useToast();
+  const [goToArea, setGoToArea] = useState<any>(null);
+  const [unreadNotifs, setUnreadNotifs] = useState<number>(0);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchHeaderData = async () => {
+      try {
+        const areaStr = await AsyncStorage.getItem(GO_TO_AREA_STORAGE_KEY);
+        if (areaStr && isMounted) {
+          const parsed = JSON.parse(areaStr);
+          if (parsed.isActive) setGoToArea(parsed);
+          else setGoToArea(null);
+        }
+        const notifs = await riderService.getNotifications();
+        if (isMounted) {
+          const unread = notifs.filter((n) => !n.isRead).length;
+          setUnreadNotifs(unread);
+        }
+      } catch (_) {}
+    };
+    fetchHeaderData();
+    const interval = setInterval(fetchHeaderData, 10000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [isOnline]);
+
+  const handleToggleOnline = () => {
+    toggleOnline();
+    if (!isOnline) {
+      showToast({
+        title: 'Duty ONLINE',
+        message: 'Looking for passengers nearby...',
+        type: 'success',
+      });
+    } else {
+      showToast({
+        title: 'Duty OFFLINE',
+        message: 'Duty paused. Turn ON when ready to drive.',
+        type: 'info',
+      });
+    }
+  };
 
   return (
-    <View style={[styles.headerContainer, isOnline ? styles.headerOn : styles.headerOff]}>
-      <TouchableOpacity onPress={() => navigation.openDrawer()} style={styles.menuButton}>
-        <Text style={{fontSize: 24, color: 'white'}}>☰</Text>
-      </TouchableOpacity>
-      <View style={{alignItems: 'center', flex: 1}}>
-        <Text style={styles.headerTitle}>{isOnline ? 'YOU ARE ONLINE' : 'YOU ARE OFFLINE'}</Text>
-        <Text style={styles.headerSub}>{isOnline ? 'Searching for rides...' : 'Go online to start'}</Text>
+    <View style={styles.headerWrapper}>
+      <View style={[styles.headerContainer, isOnline ? styles.headerOn : styles.headerOff]}>
+        <TouchableOpacity onPress={() => navigation.openDrawer()} style={styles.menuButton} activeOpacity={0.7}>
+          <Ionicons name="menu" size={24} color="#ffffff" />
+        </TouchableOpacity>
+        <View style={{alignItems: 'center', flex: 1}}>
+          <Text style={styles.headerTitle}>{isOnline ? 'YOU ARE ONLINE' : 'YOU ARE OFFLINE'}</Text>
+          <Text style={styles.headerSub}>{isOnline ? 'Searching for rides...' : 'Go online to start'}</Text>
+        </View>
+
+        <TouchableOpacity
+          onPress={() => navigation.navigate('Notifications')}
+          style={styles.notifButton}
+          activeOpacity={0.7}
+          accessibilityLabel="Open Notifications"
+        >
+          <Ionicons name="notifications-outline" size={22} color="#ffffff" />
+          {unreadNotifs > 0 && <View style={styles.notifDot} />}
+        </TouchableOpacity>
+
+        <Switch
+          trackColor={{ false: "#767577", true: "#f72585" }}
+          thumbColor={isOnline ? "#fff" : "#f4f3f4"}
+          onValueChange={handleToggleOnline}
+          value={isOnline}
+        />
       </View>
-      <Switch
-        trackColor={{ false: "#767577", true: "#81b0ff" }}
-        thumbColor={isOnline ? "#fff" : "#f4f3f4"}
-        onValueChange={toggleOnline}
-        value={isOnline}
-      />
+
+      {/* Floating Active Go-To-Area Corridor Banner */}
+      {isOnline && goToArea && (
+        <TouchableOpacity
+          style={styles.goToAreaBanner}
+          onPress={() => navigation.navigate('GoToArea')}
+          activeOpacity={0.8}
+        >
+          <View style={styles.goToAreaLeft}>
+            <Ionicons name="navigate-circle" size={18} color="#f72585" />
+            <Text style={styles.goToAreaBannerText} numberOfLines={1}>
+              Corridor: {goToArea.targetArea} (±{goToArea.radiusKm || 5}km)
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={14} color="#f72585" />
+        </TouchableOpacity>
+      )}
     </View>
   );
 };
@@ -87,6 +166,7 @@ const HeaderToggle = ({navigation}: any) => {
 // --- COMPONENT: BOTTOM PANEL ---
 const BottomPanel = () => {
   const { isOnline, incomingRequest, activeRide, acceptRide, rejectRide, arriveAtPickup, startRide, completeRide } = useRider();
+  const { showToast } = useToast();
   const [otp, setOtp] = useState('');
   const [otpModalVisible, setOtpModalVisible] = useState(false);
   const [waitTime, setWaitTime] = useState(0);
@@ -262,10 +342,16 @@ const BottomPanel = () => {
         </View>
 
         <View style={styles.actionRow}>
-          <TouchableOpacity style={[styles.btn, styles.rejectBtn]} onPress={rejectRide}>
+          <TouchableOpacity style={[styles.btn, styles.rejectBtn]} onPress={() => {
+            rejectRide();
+            showToast({ title: 'Ride Skipped', message: 'Looking for another ride...', type: 'info' });
+          }}>
             <Text style={styles.btnText}>Reject</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.btn, styles.acceptBtn]} onPress={acceptRide}>
+          <TouchableOpacity style={[styles.btn, styles.acceptBtn]} onPress={() => {
+            acceptRide();
+            showToast({ title: 'Ride Accepted!', message: 'Navigate to pickup location.', type: 'success' });
+          }}>
             <Text style={styles.btnText}>Accept</Text>
           </TouchableOpacity>
         </View>
@@ -289,6 +375,30 @@ export default function RiderDashboard({navigation}: any) {
       <View style={styles.overlay}>
         <HeaderToggle navigation={navigation} />
       </View>
+
+      {/* Floating Action Shortcuts */}
+      <View style={styles.floatingShortcutsContainer}>
+        <TouchableOpacity
+          style={styles.floatingShortcutBtn}
+          onPress={() => navigation.navigate('GoToArea')}
+          activeOpacity={0.8}
+          accessibilityLabel="Open Go To Area"
+        >
+          <Ionicons name="navigate-circle" size={20} color="#f72585" />
+          <Text style={styles.floatingShortcutText}>Go To Area</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.floatingShortcutBtn}
+          onPress={() => navigation.navigate('Performance')}
+          activeOpacity={0.8}
+          accessibilityLabel="Open Performance Hub"
+        >
+          <Ionicons name="trophy" size={18} color="#f59e0b" />
+          <Text style={styles.floatingShortcutText}>Score</Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.bottomContainer}>
         <BottomPanel />
       </View>
@@ -324,6 +434,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
 
+  headerWrapper: { gap: 8 },
   headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, borderRadius: 15, elevation: 5, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 5 },
   headerOn: { backgroundColor: '#2ecc71' }, 
   headerOff: { backgroundColor: '#34495e' },
@@ -331,6 +442,74 @@ const styles = StyleSheet.create({
   headerSub: { color: 'rgba(255,255,255,0.8)', fontSize: 12 },
   logoutText: { color: 'white', fontWeight: 'bold', fontSize: 12 },
   menuButton: { padding: 5, paddingRight: 15 },
+  notifButton: {
+    padding: 6,
+    position: 'relative',
+    marginRight: 6,
+  },
+  notifDot: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#f72585',
+    borderWidth: 1.5,
+    borderColor: '#ffffff',
+  },
+  goToAreaBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(30, 30, 44, 0.95)',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(247, 37, 133, 0.4)',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  goToAreaLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  goToAreaBannerText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  floatingShortcutsContainer: {
+    position: 'absolute',
+    right: 20,
+    top: 135,
+    gap: 10,
+    alignItems: 'flex-end',
+  },
+  floatingShortcutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    gap: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  floatingShortcutText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#111827',
+  },
 
   bottomContainer: { position: 'absolute', bottom: 0, width: '100%' },
   panel: { backgroundColor: 'white', padding: 20, borderTopLeftRadius: 20, borderTopRightRadius: 20, elevation: 15, minHeight: 100 },
