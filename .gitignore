@@ -151,3 +151,4 @@ ios/Podfile.lock
 /ios/index.ios.jsbundle
 /ios/main.jsbundle
 /ios/main.jsbundle.meta
+.neon

@@ -8,18 +8,32 @@ export function Navbar() {
   const location = useLocation();
   const [navOpen, setNavOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [userToken, setUserToken] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
 
   useEffect(() => {
     const handleScroll = () => {
       setScrolled(window.scrollY > 30);
     };
     window.addEventListener('scroll', handleScroll);
+
+    // Read user token from sessionStorage
+    const token = sessionStorage.getItem('dm_user_token');
+    const profile = sessionStorage.getItem('dm_user_profile');
+    setUserToken(token);
+    if (profile) {
+      try {
+        setUserProfile(JSON.parse(profile));
+      } catch (e) {}
+    }
+
     return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+  }, [location.pathname]);
 
   const navLinks = [
     { name: 'About Us', path: '/about' },
     { name: 'Customer App', path: '/customer' },
+    { name: 'Community Rides', path: '/dashboard' },
     { name: 'Safety', path: '/safety' },
     { name: 'Support', path: '/support' }
   ];
@@ -59,14 +73,50 @@ export function Navbar() {
           })}
         </div>
 
-        <div className="flex items-center gap-3">
+        {/* Auth & Portal Actions */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          {userToken ? (
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => navigate('/dashboard')}
+              className="flex items-center gap-2 bg-[#38c6ec]/15 border border-[#38c6ec]/30 text-[#38c6ec] font-bold text-xs sm:text-sm px-4 sm:px-5 py-2 sm:py-2.5 rounded-full hover:bg-[#38c6ec]/25 transition-all shadow-[0_0_12px_rgba(56,198,236,0.2)] cursor-pointer"
+            >
+              <div className="w-5 h-5 rounded-full bg-[#38c6ec] text-black font-bold text-xs flex items-center justify-center">
+                {userProfile?.firstName ? userProfile.firstName[0] : (userProfile?.name ? userProfile.name[0] : 'U')}
+              </div>
+              <span className="hidden sm:inline">{userProfile?.firstName || 'Dashboard'}</span>
+            </motion.button>
+          ) : (
+            <>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => navigate('/login')}
+                className="text-white hover:text-[#38c6ec] font-semibold text-xs sm:text-sm px-3.5 sm:px-4 py-2 rounded-full hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                Login
+              </motion.button>
+
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => navigate('/register')}
+                className="hidden sm:flex items-center gap-1.5 bg-[#38c6ec] text-black font-bold text-xs sm:text-sm px-4 sm:px-5 py-2 sm:py-2.5 rounded-full hover:bg-cyan-300 transition-colors shadow-[0_0_15px_rgba(56,198,236,0.3)] cursor-pointer"
+              >
+                Register
+              </motion.button>
+            </>
+          )}
+
           <motion.button 
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => navigate('/master')} 
-            className="hidden md:flex items-center gap-2 bg-[#38c6ec] text-black font-bold text-sm px-6 py-2.5 rounded-full hover:bg-cyan-300 transition-colors shadow-[0_0_15px_rgba(56,198,236,0.3)]"
+            className="hidden md:flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white font-semibold text-xs px-3.5 py-2.5 rounded-full border border-white/10 transition-colors cursor-pointer"
+            title="Master Administration Portal"
           >
-            <UserCircle size={18} />
+            <UserCircle size={16} />
             Admin
           </motion.button>
           
@@ -102,7 +152,7 @@ export function Navbar() {
                 >
                   <Link 
                     to={item.path} 
-                    className={`text-lg font-medium py-4 px-4 rounded-2xl flex items-center justify-between group transition-colors ${isActive ? 'bg-[#38c6ec]/10 text-[#38c6ec]' : 'hover:bg-white/5 text-slate-200 hover:text-white'}`}
+                    className={`text-lg font-medium py-3.5 px-4 rounded-2xl flex items-center justify-between group transition-colors ${isActive ? 'bg-[#38c6ec]/10 text-[#38c6ec]' : 'hover:bg-white/5 text-slate-200 hover:text-white'}`}
                     onClick={() => setNavOpen(false)}
                   >
                     {item.name}
@@ -116,14 +166,38 @@ export function Navbar() {
                initial={{ opacity: 0, y: 20 }}
                animate={{ opacity: 1, y: 0 }}
                transition={{ delay: 0.3 }}
-               className="mt-4 pt-4 border-t border-white/10"
+               className="mt-3 pt-3 border-t border-white/10 flex flex-col gap-2"
             >
+              {userToken ? (
+                <button 
+                  onClick={() => { setNavOpen(false); navigate('/dashboard'); }} 
+                  className="w-full flex justify-center items-center gap-2 bg-[#38c6ec] text-black font-bold py-3.5 rounded-2xl text-base hover:bg-cyan-300 transition-colors shadow-lg cursor-pointer"
+                >
+                  My Commuter Dashboard
+                </button>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <button 
+                    onClick={() => { setNavOpen(false); navigate('/login'); }} 
+                    className="flex justify-center items-center py-3 rounded-2xl bg-white/10 text-white font-bold text-sm hover:bg-white/20 transition-colors cursor-pointer"
+                  >
+                    Login
+                  </button>
+                  <button 
+                    onClick={() => { setNavOpen(false); navigate('/register'); }} 
+                    className="flex justify-center items-center py-3 rounded-2xl bg-[#38c6ec] text-black font-bold text-sm hover:bg-cyan-300 transition-colors cursor-pointer"
+                  >
+                    Register
+                  </button>
+                </div>
+              )}
+
               <button 
                 onClick={() => { setNavOpen(false); navigate('/master'); }} 
-                className="w-full flex justify-center items-center gap-2 bg-[#38c6ec] text-black font-bold py-4 rounded-2xl text-lg hover:bg-cyan-300 transition-colors shadow-lg"
+                className="w-full flex justify-center items-center gap-2 bg-white/5 border border-white/10 text-slate-300 font-semibold py-3 rounded-2xl text-xs hover:bg-white/10 transition-colors cursor-pointer"
               >
-                <UserCircle size={22} />
-                Admin Portal
+                <UserCircle size={16} />
+                Admin Staff Portal
               </button>
             </motion.div>
             </motion.div>

@@ -13,7 +13,7 @@ interface RoutePoint {
 }
 
 interface Props {
-  center: Coord;
+  center?: Coord | null;
   googleMapsKey?: string | null;
   zoom?: number;
   pickupCoord?: { lat: number; lng: number } | null;
@@ -31,6 +31,8 @@ export default function RiderWebMapView({
   routeCoords = [],
   style,
 }: Props) {
+  const safeLat = center?.latitude ?? 17.385;
+  const safeLng = center?.longitude ?? 78.4867;
   const routeJson = JSON.stringify(routeCoords);
 
   const googleMapsHtml = `<!DOCTYPE html>
@@ -48,7 +50,7 @@ export default function RiderWebMapView({
 <script>
   let map;
   function initMap() {
-    const center = { lat: ${center.latitude}, lng: ${center.longitude} };
+    const center = { lat: ${safeLat}, lng: ${safeLng} };
     map = new google.maps.Map(document.getElementById('map'), {
       center,
       zoom: ${zoom},
@@ -148,10 +150,10 @@ export default function RiderWebMapView({
 <div id="map"></div>
 <script>
   const map = L.map('map', { zoomControl:true, attributionControl:false })
-    .setView([${center.latitude}, ${center.longitude}], ${zoom});
+    .setView([${safeLat}, ${safeLng}], ${zoom});
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19 }).addTo(map);
   const riderIcon = L.divIcon({ html:'<div style="width:14px;height:14px;border-radius:50%;background:#4285f4;border:3px solid white;box-shadow:0 0 8px rgba(66,133,244,0.6)"></div>', iconSize:[14,14], iconAnchor:[7,7], className:'' });
-  L.marker([${center.latitude}, ${center.longitude}], { icon:riderIcon }).addTo(map);
+  L.marker([${safeLat}, ${safeLng}], { icon:riderIcon }).addTo(map);
   ${pickupCoord ? `
   const fromIcon = L.divIcon({ html:'<span class="marker-label from-label">FROM</span>', className:'', iconAnchor:[20,12] });
   L.marker([${pickupCoord.lat}, ${pickupCoord.lng}], { icon:fromIcon }).addTo(map);

@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="380" viewBox="0 0 600 380">
+  <defs>
+    <linearGradient id="rcGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFBF0"/>
+      <stop offset="100%" stop-color="#F5EFE0"/>
+    </linearGradient>
+  </defs>
+  <rect width="600" height="380" rx="16" fill="url(#rcGrad)" stroke="#B45309" stroke-width="2"/>
+  <rect x="0" y="0" width="600" height="35" rx="16 16 0 0" fill="#92400E"/>
+  
+  <text x="300" y="24" font-family="Arial, sans-serif" font-size="15" font-weight="bold" fill="#FFFFFF" text-anchor="middle">CERTIFICATE OF REGISTRATION • FORM 23</text>
+  <text x="300" y="55" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#78350F" text-anchor="middle">TRANSPORT DEPARTMENT • GOVERNMENT OF TELANGANA / KARNATAKA</text>
+  
+  <rect x="40" y="70" width="520" height="45" rx="8" fill="#FFFFFF" stroke="#FDE68A"/>
+  <text x="55" y="98" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#78350F">REGISTRATION NO:</text>
+  <text x="210" y="100" font-family="'Courier New', monospace" font-size="22" font-weight="bold" fill="#B45309" letter-spacing="3">TS09EA1234 / KA01AB1234</text>
+  
+  <g font-family="Arial, sans-serif" font-size="12" fill="#1F2937">
+    <text x="50" y="145" font-weight="bold" fill="#6B7280">Owner Name:</text>
+    <text x="180" y="145" font-weight="bold">KRISHNA / RAJESH SHARMA</text>
+    
+    <text x="50" y="175" font-weight="bold" fill="#6B7280">Vehicle Class:</text>
+    <text x="180" y="175" font-weight="bold">M-CYCLE/SCOOTER (TWO WHEELER)</text>
+    
+    <text x="50" y="205" font-weight="bold" fill="#6B7280">Maker / Model:</text>
+    <text x="180" y="205" font-weight="bold">HONDA MOTORCYCLE &amp; SCOOTER / ACTIVA 6G</text>
+    
+    <text x="50" y="235" font-weight="bold" fill="#6B7280">Chassis No:</text>
+    <text x="180" y="235" font-family="monospace" font-weight="bold">ME4JF504LMB019284</text>
+    
+    <text x="50" y="265" font-weight="bold" fill="#6B7280">Engine No:</text>
+    <text x="180" y="265" font-family="monospace" font-weight="bold">JF50ET7294819</text>
+    
+    <text x="50" y="295" font-weight="bold" fill="#6B7280">Fuel / Emission:</text>
+    <text x="180" y="295" font-weight="bold">PETROL / BHARAT STAGE VI (BS-VI)</text>
+    
+    <text x="50" y="325" font-weight="bold" fill="#6B7280">Registration Date:</text>
+    <text x="180" y="325" font-weight="bold">15/01/2023</text>
+    
+    <text x="350" y="325" font-weight="bold" fill="#6B7280">Fitness Valid Till:</text>
+    <text x="480" y="325" font-weight="bold" fill="#047857">14/01/2038</text>
+  </g>
+  
+  <rect x="40" y="345" width="520" height="25" rx="4" fill="#FEF3C7"/>
+  <text x="300" y="362" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#92400E" text-anchor="middle">INSURANCE POLICY NO: 2314/00293841/000/00 • VALID UP TO: 14/01/2028</text>
+</svg>

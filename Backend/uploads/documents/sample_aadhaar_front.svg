@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="380" viewBox="0 0 600 380">
+  <defs>
+    <linearGradient id="flagGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FF9933" />
+      <stop offset="50%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#128807" />
+    </linearGradient>
+    <linearGradient id="cardBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFDF9" />
+      <stop offset="100%" stop-color="#F2EDE4" />
+    </linearGradient>
+  </defs>
+  <rect width="600" height="380" rx="16" fill="url(#cardBg)" stroke="#D4AF37" stroke-width="2"/>
+  <rect x="0" y="0" width="600" height="12" fill="#FF9933" rx="16 16 0 0"/>
+  <rect x="0" y="12" width="600" height="8" fill="#FFFFFF"/>
+  <rect x="0" y="20" width="600" height="8" fill="#128807"/>
+  
+  <!-- Header -->
+  <text x="300" y="55" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#003366" text-anchor="middle">GOVERNMENT OF INDIA • भारत सरकार</text>
+  <text x="300" y="75" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#B22222" text-anchor="middle">UNIQUE IDENTIFICATION AUTHORITY OF INDIA</text>
+  
+  <!-- Emblems & Icons -->
+  <circle cx="60" cy="55" r="22" fill="#E8D5B5" stroke="#003366" stroke-width="1.5"/>
+  <text x="60" y="60" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#003366" text-anchor="middle">सत्यमेव</text>
+
+  <!-- Photo Box -->
+  <rect x="40" y="110" width="130" height="160" rx="8" fill="#E5E7EB" stroke="#9CA3AF" stroke-width="2"/>
+  <circle cx="105" cy="165" r="32" fill="#9CA3AF"/>
+  <path d="M60 250 C60 210, 150 210, 150 250 Z" fill="#9CA3AF"/>
+  
+  <!-- QR Code Mock -->
+  <rect x="440" y="110" width="120" height="120" rx="6" fill="#FFFFFF" stroke="#111827" stroke-width="2"/>
+  <rect x="455" y="125" width="25" height="25" fill="#111827"/>
+  <rect x="520" y="125" width="25" height="25" fill="#111827"/>
+  <rect x="455" y="190" width="25" height="25" fill="#111827"/>
+  <rect x="490" y="160" width="20" height="20" fill="#111827"/>
+  
+  <!-- Details -->
+  <text x="190" y="130" font-family="Arial, sans-serif" font-size="13" font-weight="bold" fill="#4B5563">Name / नाम:</text>
+  <text x="190" y="150" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#111827">KRISHNA / RAJESH SHARMA</text>
+  
+  <text x="190" y="180" font-family="Arial, sans-serif" font-size="13" font-weight="bold" fill="#4B5563">DOB / जन्म तिथि:</text>
+  <text x="190" y="200" font-family="Arial, sans-serif" font-size="15" font-weight="bold" fill="#111827">05/09/2001</text>
+  
+  <text x="190" y="230" font-family="Arial, sans-serif" font-size="13" font-weight="bold" fill="#4B5563">Gender / लिंग:</text>
+  <text x="190" y="250" font-family="Arial, sans-serif" font-size="15" font-weight="bold" fill="#111827">MALE / पुरुष</text>
+  
+  <!-- Aadhaar Number Band -->
+  <rect x="40" y="295" width="520" height="48" rx="8" fill="#F3F4F6" stroke="#E5E7EB"/>
+  <text x="300" y="328" font-family="'Courier New', monospace" font-size="24" font-weight="bold" fill="#B22222" letter-spacing="4" text-anchor="middle">XXXX  XXXX  9012</text>
+  
+  <!-- Bottom Motto -->
+  <text x="300" y="365" font-family="Arial, sans-serif" font-size="13" font-weight="bold" fill="#B22222" text-anchor="middle">मेरा आधार, मेरी पहचान</text>
+</svg>

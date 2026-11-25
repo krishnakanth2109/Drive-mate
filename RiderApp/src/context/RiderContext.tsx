@@ -11,9 +11,12 @@ interface RiderContextType {
   googleMapsKey: string | null;
   incomingRequest: Ride | null;
   activeRide: Ride | null;
+  setActiveRide: (ride: Ride | null) => void;
+  refreshActiveRide: () => Promise<void>;
   toggleOnline: () => void;
   acceptRide: () => void;
   rejectRide: () => void;
+  arriveAtPickup: () => Promise<boolean>;
   startRide: (otp: string) => Promise<boolean>;
   completeRide: () => void;
   logout: (nav: any) => void;
@@ -24,13 +27,13 @@ const RiderContext = createContext<RiderContextType>({} as RiderContextType);
 export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
   const [isOnline, setIsOnline] = useState(false);
   const [location, setLocation] = useState<any>(null);
-  const [googleMapsKey, setGoogleMapsKey] = useState<string | null>(null);
+  const [googleMapsKey, setGoogleMapsKey] = useState<string | null>('AIzaSyDOMtmUqwZCLcEHSGQI4WpBLnvBiEPmX2E');
   const [incomingRequest, setIncomingRequest] = useState<Ride | null>(null);
   const [activeRide, setActiveRide] = useState<Ride | null>(null);
   
   // Interval & Timeout references
-  const locationInterval = useRef<NodeJS.Timeout | null>(null);
-  const requestTimeout = useRef<NodeJS.Timeout | null>(null);
+  const locationInterval = useRef<any>(null);
+  const requestTimeout = useRef<any>(null);
 
   // 1. Initial Permission & Current Location
   useEffect(() => {
@@ -41,15 +44,40 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
         return;
       }
       try {
-        const loc = await Location.getCurrentPositionAsync({});
-        setLocation({
-          latitude: loc.coords.latitude,
-          longitude: loc.coords.longitude,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
-        });
+        // Fast path: use last known position immediately to get past loading screen
+        let loc = await Location.getLastKnownPositionAsync({});
+        if (loc) {
+          setLocation({
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude,
+            latitudeDelta: 0.05,
+            longitudeDelta: 0.05,
+          });
+        }
+        
+        // Accurate path: attempt to get current position with a 5-second timeout
+        const currentLoc = await Promise.race([
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
+        ]) as any;
+
+        if (currentLoc) {
+            setLocation({
+                latitude: currentLoc.coords.latitude,
+                longitude: currentLoc.coords.longitude,
+                latitudeDelta: 0.05,
+                longitudeDelta: 0.05,
+            });
+        }
       } catch (e) {
-        console.log("Location fetch error on init", e);
+        console.log("Location fetch error/timeout on init", e);
+        // If location is STILL null, set a fallback location (e.g. New Delhi) so the app loads
+        setLocation((prev: any) => prev || {
+            latitude: 28.6139,
+            longitude: 77.2090,
+            latitudeDelta: 0.05,
+            longitudeDelta: 0.05,
+        });
       }
     })();
 
@@ -120,7 +148,7 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
     
     locationInterval.current = setInterval(async () => {
         try {
-            const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+            const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
             const { latitude, longitude, heading } = loc.coords;
             
             setLocation((prev: any) => ({
@@ -181,15 +209,30 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
+  const arriveAtPickup = async () => {
+    if(!activeRide) return false;
+    try {
+        const res = await api.put('/ride/update-status', {
+            rideId: activeRide._id,
+            status: 'arrived'
+        });
+        setActiveRide(res.data.ride || { ...activeRide, status: 'arrived', arrivedAt: new Date().toISOString() });
+        return true;
+    } catch (err) {
+        Alert.alert("Error", "Could not update status");
+        return false;
+    }
+  };
+
   const startRide = async (otp: string) => {
     if(!activeRide) return false;
     try {
-        await api.put('/ride/update-status', {
+        const res = await api.put('/ride/update-status', {
             rideId: activeRide._id,
             status: 'ongoing',
             otp
         });
-        setActiveRide({ ...activeRide, status: 'ongoing' });
+        setActiveRide(res.data.ride || { ...activeRide, status: 'ongoing' });
         return true;
     } catch (err: any) {
         Alert.alert("Invalid OTP", "Ask customer for the 4-digit code");
@@ -216,18 +259,44 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
     setIncomingRequest(null);
   };
 
+  const refreshActiveRide = async () => {
+    try {
+      const token = await AsyncStorage.getItem('token');
+      if (!token) return;
+      const res = await api.get('/ride/rider/active');
+      if (res.data && res.data.ride) {
+        setActiveRide(res.data.ride);
+      } else {
+        setActiveRide(null);
+      }
+    } catch (e) {
+      console.log('Error checking active ride on init:', e);
+    }
+  };
+
+  useEffect(() => {
+    refreshActiveRide();
+  }, []);
+
   const logout = async (nav: any) => {
       setIsOnline(false);
-      stopLocationUpdates();
-      await AsyncStorage.clear();
+      // Clear session auth tokens but keep saved credentials if Remember Me was selected
+      await AsyncStorage.multiRemove(['token', 'userId', 'user', 'rider']);
       socket.disconnect();
-      nav.replace('Login');
+      if (nav?.replace) {
+        nav.replace('Login');
+      } else if (nav?.reset) {
+        nav.reset({ index: 0, routes: [{ name: 'Login' }] });
+      } else if (nav?.navigate) {
+        nav.navigate('Login');
+      }
   };
 
   return (
     <RiderContext.Provider value={{
       isOnline, location, googleMapsKey, incomingRequest, activeRide,
-      toggleOnline, acceptRide, rejectRide, startRide, completeRide, logout
+      setActiveRide, refreshActiveRide,
+      toggleOnline, acceptRide, rejectRide, arriveAtPickup, startRide, completeRide, logout
     }}>
       {children}
     </RiderContext.Provider>
