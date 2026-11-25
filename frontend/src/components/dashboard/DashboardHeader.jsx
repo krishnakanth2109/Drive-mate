@@ -17,7 +17,8 @@ import {
   Zap,
   Building2,
   Menu,
-  X
+  X,
+  Wallet
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -46,6 +47,7 @@ export function DashboardHeader({
     { id: 'overview', label: 'Home Feed', icon: Home, badge: null },
     { id: 'rides', label: 'Bike Rides', icon: Bike, badge: 'Live' },
     { id: 'post-ride', label: 'Post a Ride', icon: PlusCircle, badge: null },
+    { id: 'wallet', label: 'Wallet', icon: Wallet, badge: null },
     { id: 'inbox', label: 'Messaging', icon: MessageSquare, badge: unreadCount > 0 ? unreadCount : null },
     { id: 'security', label: 'Security', icon: ShieldCheck, badge: null },
   ];

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,16 +11,29 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { api } from '../../../services/api';
 
 export default function PaymentScreen() {
   const navigation = useNavigation<any>();
   const [selectedMethod, setSelectedMethod] = useState('wallet');
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+
+  useEffect(() => {
+    api.get('/wallet')
+      .then((res) => {
+        const data = res.data?.data !== undefined ? res.data.data : res.data;
+        if (data?.balance !== undefined) {
+          setWalletBalance(Number(data.balance));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const paymentMethods = [
     {
       id: 'wallet',
       title: 'DriveMate Wallet',
-      subtitle: 'Balance: ₹500.00',
+      subtitle: walletBalance !== null ? `Balance: ₹${walletBalance.toFixed(2)}` : 'Loading wallet balance...',
       icon: 'wallet',
       color: '#f72585',
       badge: 'Fastest',

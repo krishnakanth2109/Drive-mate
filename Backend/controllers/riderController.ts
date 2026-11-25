@@ -6,6 +6,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
+import { getAuthoritativeWallet, getPaginatedTransactions, getOrCreateWallet } from '../services/walletService.js';
 
 const generateId = (): string => crypto.randomBytes(12).toString('hex');
 
@@ -296,37 +297,35 @@ export const getRiderWallet = asyncHandler(async (req: AuthenticatedRequest, res
     },
   ];
 
-  const recentCompletedRides = await prisma.ride.findMany({
-    where: { riderId: targetId, status: 'completed' },
-    take: 5,
-    orderBy: { createdAt: 'desc' },
-  });
+  // Fetch authoritative wallet balance and ledger transactions
+  const authWallet = await getAuthoritativeWallet(targetId, 'rider');
+  const ledger = await getPaginatedTransactions(targetId, 'rider', { page: 1, limit: 20 });
 
-  const transactions = recentCompletedRides.map((r) => ({
-    id: `tx_${r.id}`,
-    _id: `tx_${r.id}`,
+  const formattedTransactions = ledger.items.map((tx: any) => ({
+    id: tx.id,
+    _id: tx.id,
     userId: targetId,
     userModel: 'Rider',
-    type: 'credit',
-    amount: Number(r.fare || 185),
-    currency: 'INR',
-    description: `Ride Earnings - Trip #${r.id.slice(-4).toUpperCase()}`,
-    createdAt: r.createdAt,
+    type: tx.direction === 'CREDIT' ? 'credit' : 'debit',
+    txType: tx.type,
+    amount: Number(tx.amount),
+    currency: tx.currency || 'INR',
+    status: tx.status,
+    description: tx.description,
+    referenceId: tx.referenceId,
+    balanceBefore: tx.balanceBefore,
+    balanceAfter: tx.balanceAfter,
+    createdAt: tx.createdAt,
   }));
 
-  if (transactions.length === 0) {
-    transactions.push(
-      { id: 'tx_1', _id: 'tx_1', userId: targetId, userModel: 'Rider', type: 'credit', amount: 850, currency: 'INR', description: 'Ride Earnings - Trip #8942', createdAt: new Date() },
-      { id: 'tx_2', _id: 'tx_2', userId: targetId, userModel: 'Rider', type: 'debit', amount: 500, currency: 'INR', description: 'Payout to Bank', createdAt: new Date(Date.now() - 86400000) },
-      { id: 'tx_3', _id: 'tx_3', userId: targetId, userModel: 'Rider', type: 'credit', amount: 500, currency: 'INR', description: 'Weekly Bonus', createdAt: new Date(Date.now() - 172800000) }
-    );
-  }
-
   res.status(200).json(new ApiResponse(200, {
-    balance: Number(rider.walletBalance || 3450),
-    totalEarnings: Number(rider.totalEarnings || 3450),
+    walletId: authWallet.walletId,
+    balance: Number(authWallet.balance),
+    lockedBalance: Number(authWallet.lockedBalance),
+    availableBalance: Number(authWallet.availableBalance),
+    totalEarnings: Number(rider.totalEarnings ?? authWallet.balance ?? 0),
     linkedAccounts: defaultAccounts,
-    transactions,
+    transactions: formattedTransactions,
   }, 'Wallet details fetched'));
 });
 
@@ -337,33 +336,72 @@ export const requestPayout = asyncHandler(async (req: AuthenticatedRequest, res:
   const { amount = 500, accountId } = req.body;
   const payoutAmount = Number(amount);
 
-  if (payoutAmount <= 0) throw new ApiError(400, 'Invalid payout amount');
+  if (isNaN(payoutAmount) || payoutAmount <= 0) throw new ApiError(400, 'Invalid payout amount');
 
-  const currentBalance = Number(rider.walletBalance || 0);
-  if (currentBalance < payoutAmount) {
-    throw new ApiError(400, 'Insufficient wallet balance for this payout');
-  }
+  const wallet = await getOrCreateWallet(targetId, 'rider');
 
-  const updatedRider = await prisma.rider.update({
-    where: { id: targetId },
-    data: { walletBalance: { decrement: payoutAmount } },
+  const payoutResult = await prisma.$transaction(async (tx) => {
+    const freshWallet = await tx.wallet.findUnique({ where: { id: wallet.id } });
+    if (!freshWallet) throw new ApiError(404, 'Wallet record not found');
+
+    const currentBalance = Number(freshWallet.balance);
+    if (currentBalance < payoutAmount) {
+      throw new ApiError(400, `Insufficient wallet balance for this payout (Available: ₹${currentBalance.toFixed(2)})`);
+    }
+
+    const balanceBefore = currentBalance;
+    const balanceAfter = currentBalance - payoutAmount;
+
+    const updatedWallet = await tx.wallet.update({
+      where: { id: freshWallet.id },
+      data: { balance: { decrement: payoutAmount } },
+    });
+
+    await tx.rider.update({
+      where: { id: targetId },
+      data: { walletBalance: { decrement: payoutAmount } },
+    });
+
+    const newTx = await tx.walletTransaction.create({
+      data: {
+        id: generateId(),
+        walletId: freshWallet.id,
+        type: 'PAYOUT',
+        amount: payoutAmount,
+        direction: 'DEBIT',
+        balanceBefore,
+        balanceAfter,
+        currency: 'INR',
+        status: 'SUCCESS',
+        referenceId: accountId || 'PRIMARY_BANK',
+        referenceType: 'BANK_PAYOUT',
+        description: `Payout to Bank (${accountId ? 'Account ' + accountId : 'Primary Account'})`,
+      },
+    });
+
+    await tx.transaction.create({
+      data: {
+        id: generateId(),
+        userId: targetId,
+        userModel: 'Rider',
+        type: 'debit',
+        amount: payoutAmount,
+        currency: 'INR',
+        description: `Payout to Bank (${accountId ? 'Account ' + accountId : 'Primary Account'})`,
+        referenceId: newTx.id,
+      },
+    });
+
+    return { newBalance: Number(updatedWallet.balance), transaction: newTx };
   });
 
-  const newTx = {
-    id: generateId(),
-    _id: generateId(),
-    userId: targetId,
-    userModel: 'Rider',
-    type: 'debit',
-    amount: payoutAmount,
-    currency: 'INR',
-    description: `Payout to Bank (${accountId ? 'Account ' + accountId : 'Primary Account'})`,
-    createdAt: new Date(),
-  };
-
   res.status(200).json(new ApiResponse(200, {
-    newBalance: Number(updatedRider.walletBalance),
-    transaction: newTx,
+    newBalance: payoutResult.newBalance,
+    transaction: {
+      ...payoutResult.transaction,
+      _id: payoutResult.transaction.id,
+      type: 'debit',
+    },
   }, 'Payout processed successfully'));
 });
 

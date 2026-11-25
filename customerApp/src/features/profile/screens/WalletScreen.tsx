@@ -18,8 +18,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { api } from '../../../services/api';
+import { api, socket } from '../../../services/api';
 import { useCustomer } from '../../../context/CustomerContext';
+import RazorpayCheckoutModal, {
+  RazorpayOrderPayload,
+  RazorpaySuccessPayload,
+} from '../../../components/payment/RazorpayCheckoutModal';
 
 const { width } = Dimensions.get('window');
 
@@ -70,10 +74,12 @@ export default function WalletScreen() {
   // Filters
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'TOPUP' | 'RIDE_FARE' | 'REFUND'>('ALL');
 
-  // Top-Up Modal State
+  // Top-Up Modal & Razorpay Checkout State
   const [topupModalVisible, setTopupModalVisible] = useState(false);
   const [topupAmount, setTopupAmount] = useState('500');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [checkoutOrder, setCheckoutOrder] = useState<RazorpayOrderPayload | null>(null);
+  const [razorpayModalVisible, setRazorpayModalVisible] = useState(false);
   const [paymentFeedback, setPaymentFeedback] = useState<{
     visible: boolean;
     status: 'success' | 'failed' | 'cancelled';
@@ -160,7 +166,7 @@ export default function WalletScreen() {
     [activeFilter]
   );
 
-  // Initial Load
+  // Initial Load & Socket.IO real-time balance updates
   useEffect(() => {
     const loadAll = async () => {
       setLoading(true);
@@ -168,6 +174,27 @@ export default function WalletScreen() {
       setLoading(false);
     };
     loadAll();
+
+    const handleWalletUpdated = (payload: any) => {
+      if (payload?.balance !== undefined) {
+        setWallet((prev) =>
+          prev
+            ? {
+                ...prev,
+                balance: Number(payload.balance),
+                availableBalance: Number(payload.balance) - Number(prev.lockedBalance || 0),
+              }
+            : prev
+        );
+      }
+      fetchWallet();
+      fetchTransactions(1, activeFilter, false);
+    };
+
+    socket.on('wallet:updated', handleWalletUpdated);
+    return () => {
+      socket.off('wallet:updated', handleWalletUpdated);
+    };
   }, [fetchWallet, fetchTransactions, activeFilter]);
 
   // Pull to refresh handler
@@ -196,23 +223,111 @@ export default function WalletScreen() {
     setTopupAmount(amt.toString());
   };
 
-  // Handle Top-Up Execution
+  // Verify Razorpay Payment Signature & Credit Wallet on Backend
+  const verifyRazorpayPaymentOnBackend = async (
+    response: RazorpaySuccessPayload,
+    paidAmount: number
+  ) => {
+    try {
+      setIsProcessingPayment(true);
+      await api.post('/wallet/topup/verify', {
+        razorpay_order_id: response.razorpay_order_id,
+        razorpay_payment_id: response.razorpay_payment_id,
+        razorpay_signature: response.razorpay_signature,
+      });
+
+      setIsProcessingPayment(false);
+      setRazorpayModalVisible(false);
+      setCheckoutOrder(null);
+
+      setPaymentFeedback({
+        visible: true,
+        status: 'success',
+        title: 'Payment Successful!',
+        message: `₹${paidAmount.toFixed(2)} has been credited to your DriveMate Wallet.`,
+        amount: paidAmount,
+        reference: response.razorpay_payment_id,
+      });
+
+      await fetchWallet();
+      await fetchTransactions(1, activeFilter, false);
+    } catch (vErr: any) {
+      setIsProcessingPayment(false);
+      setRazorpayModalVisible(false);
+      setPaymentFeedback({
+        visible: true,
+        status: 'failed',
+        title: 'Verification Failed',
+        message:
+          vErr?.response?.data?.message ||
+          vErr?.message ||
+          'Payment signature could not be verified.',
+      });
+    }
+  };
+
+  // Fallback Test Simulator (only triggered manually if gateway is unreachable offline)
+  const handleSimulateOfflineTest = async (orderId: string) => {
+    const numericAmount = checkoutOrder?.amount || parseFloat(topupAmount) || 500;
+    try {
+      setIsProcessingPayment(true);
+      const simRes = await api.post('/wallet/topup/simulate-test-payment', { orderId });
+      const simData = simRes.data?.data !== undefined ? simRes.data.data : simRes.data;
+
+      setIsProcessingPayment(false);
+      setRazorpayModalVisible(false);
+      setCheckoutOrder(null);
+
+      setPaymentFeedback({
+        visible: true,
+        status: 'success',
+        title: 'Money Added Successfully!',
+        message: `₹${numericAmount.toFixed(2)} added to your wallet.`,
+        amount: numericAmount,
+        reference: simData?.paymentId || orderId,
+      });
+
+      await fetchWallet();
+      await fetchTransactions(1, activeFilter, false);
+    } catch (simErr: any) {
+      setIsProcessingPayment(false);
+      setRazorpayModalVisible(false);
+      setPaymentFeedback({
+        visible: true,
+        status: 'failed',
+        title: 'Top-Up Failed',
+        message: simErr?.response?.data?.message || 'Failed to complete test payment.',
+      });
+    }
+  };
+
+  // Handle Top-Up Execution via Razorpay (Native SDK, Expo Go WebView, or Web Standard Checkout)
   const handleProceedTopup = async () => {
     const numericAmount = parseFloat(topupAmount);
 
     if (isNaN(numericAmount) || numericAmount < 10) {
-      Alert.alert('Invalid Amount', 'Please enter a minimum top-up amount of ₹10.00');
+      setPaymentFeedback({
+        visible: true,
+        status: 'failed',
+        title: 'Invalid Amount',
+        message: 'Please enter a minimum top-up amount of ₹10.00',
+      });
       return;
     }
     if (numericAmount > 50000) {
-      Alert.alert('Limit Exceeded', 'Maximum single top-up limit is ₹50,000.00');
+      setPaymentFeedback({
+        visible: true,
+        status: 'failed',
+        title: 'Limit Exceeded',
+        message: 'Maximum single top-up limit is ₹50,000.00',
+      });
       return;
     }
 
     setIsProcessingPayment(true);
 
     try {
-      // 1. Create payment order on backend
+      // 1. Create authoritative Razorpay payment order on backend
       const res = await api.post('/wallet/topup/order', {
         amount: numericAmount,
         currency: 'INR',
@@ -225,8 +340,11 @@ export default function WalletScreen() {
 
       setTopupModalVisible(false);
 
-      // 2. Safe Razorpay Checkout check
-      // In Expo Go or Web, native Razorpay module is unavailable so we safely route to the simulated instant top-up
+      const prefillEmail = currentUser?.email || 'commuter@drivemate.com';
+      const prefillPhone = currentUser?.phone || '9876543210';
+      const prefillName = currentUser?.name || 'DriveMate Commuter';
+
+      // 2. Check if compiled Native Razorpay SDK is available (custom dev client / standalone APK)
       const hasNativeRazorpay =
         Platform.OS !== 'web' &&
         Boolean(NativeModules?.RNRazorpayCheckout);
@@ -234,66 +352,32 @@ export default function WalletScreen() {
       let RazorpayCheckout: any = null;
       if (hasNativeRazorpay) {
         try {
-          RazorpayCheckout = require('react-native-razorpay').default || require('react-native-razorpay');
+          RazorpayCheckout =
+            require('react-native-razorpay').default || require('react-native-razorpay');
         } catch (_) {
           RazorpayCheckout = null;
         }
       }
 
-      const prefillEmail = currentUser?.email || 'commuter@drivemate.com';
-      const prefillPhone = currentUser?.phone || '9876543210';
-      const prefillName = currentUser?.name || 'DriveMate Commuter';
-
-      const options = {
-        description: 'DriveMate Wallet Recharge',
-        image: 'https://cdn-icons-png.flaticon.com/512/3258/3258446.png',
-        currency: 'INR',
-        key: orderData.keyId,
-        amount: orderData.amountPaise || Math.round(numericAmount * 100),
-        name: 'DriveMate',
-        order_id: orderData.orderId,
-        prefill: {
-          email: prefillEmail,
-          contact: prefillPhone,
-          name: prefillName,
-        },
-        theme: { color: '#f72585' },
-      };
-
       if (hasNativeRazorpay && RazorpayCheckout && typeof RazorpayCheckout.open === 'function') {
-        // Native build with compiled Razorpay SDK
-        RazorpayCheckout.open(options)
-          .then(async (response: any) => {
-            // 3. Verify signature on backend
-            try {
-              await api.post('/wallet/topup/verify', {
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-              });
+        const nativeOptions = {
+          description: 'DriveMate Wallet Recharge',
+          image: 'https://cdn-icons-png.flaticon.com/512/3258/3258446.png',
+          currency: orderData.currency || 'INR',
+          key: orderData.keyId,
+          amount: orderData.amountPaise || Math.round(numericAmount * 100),
+          name: 'DriveMate',
+          order_id: orderData.orderId,
+          prefill: {
+            email: prefillEmail,
+            contact: prefillPhone,
+            name: prefillName,
+          },
+          theme: { color: '#f72585' },
+        };
 
-              setIsProcessingPayment(false);
-              setPaymentFeedback({
-                visible: true,
-                status: 'success',
-                title: 'Payment Successful!',
-                message: `₹${numericAmount.toFixed(2)} has been credited to your DriveMate Wallet.`,
-                amount: numericAmount,
-                reference: response.razorpay_payment_id,
-              });
-
-              await fetchWallet();
-              await fetchTransactions(1, activeFilter, false);
-            } catch (vErr: any) {
-              setIsProcessingPayment(false);
-              setPaymentFeedback({
-                visible: true,
-                status: 'failed',
-                title: 'Verification Failed',
-                message: vErr?.response?.data?.message || 'Payment signature could not be verified.',
-              });
-            }
-          })
+        RazorpayCheckout.open(nativeOptions)
+          .then((response: any) => verifyRazorpayPaymentOnBackend(response, numericAmount))
           .catch((err: any) => {
             setIsProcessingPayment(false);
             const isCancelled = err?.code === 0 || err?.description?.includes('cancelled');
@@ -305,62 +389,31 @@ export default function WalletScreen() {
             });
           });
       } else {
-        // Instant Test / Expo Go Sandbox Top-Up Flow
-        Alert.alert(
-          'Instant Wallet Recharge',
-          `Add ₹${numericAmount.toFixed(2)} to your DriveMate Wallet using the development payment simulator?`,
-          [
-            {
-              text: 'Cancel',
-              style: 'cancel',
-              onPress: () => {
-                setIsProcessingPayment(false);
-                setPaymentFeedback({
-                  visible: true,
-                  status: 'cancelled',
-                  title: 'Payment Cancelled',
-                  message: 'Top-up request was cancelled.',
-                });
-              },
-            },
-            {
-              text: `Recharge ₹${numericAmount.toFixed(2)}`,
-              onPress: async () => {
-                try {
-                  const simRes = await api.post('/wallet/topup/simulate-test-payment', {
-                    orderId: orderData.orderId,
-                  });
-                  const simData = simRes.data?.data !== undefined ? simRes.data.data : simRes.data;
-
-                  setIsProcessingPayment(false);
-                  setPaymentFeedback({
-                    visible: true,
-                    status: 'success',
-                    title: 'Money Added Successfully!',
-                    message: `₹${numericAmount.toFixed(2)} added to your wallet.`,
-                    amount: numericAmount,
-                    reference: simData?.paymentId || orderData.orderId,
-                  });
-
-                  await fetchWallet();
-                  await fetchTransactions(1, activeFilter, false);
-                } catch (simErr: any) {
-                  setIsProcessingPayment(false);
-                  setPaymentFeedback({
-                    visible: true,
-                    status: 'failed',
-                    title: 'Top-Up Failed',
-                    message: simErr?.response?.data?.message || 'Failed to complete test payment.',
-                  });
-                }
-              },
-            },
-          ]
-        );
+        // 3. Open Real Razorpay Standard Checkout (Expo Go WebView on mobile, checkout.js on Web)
+        setCheckoutOrder({
+          orderId: orderData.orderId,
+          amount: Number(orderData.amount || numericAmount),
+          amountPaise: orderData.amountPaise || Math.round(numericAmount * 100),
+          currency: orderData.currency || 'INR',
+          keyId: orderData.keyId,
+          description: 'DriveMate Wallet Recharge',
+          prefill: {
+            name: prefillName,
+            email: prefillEmail,
+            contact: prefillPhone,
+          },
+        });
+        setIsProcessingPayment(false);
+        setRazorpayModalVisible(true);
       }
     } catch (err: any) {
       setIsProcessingPayment(false);
-      Alert.alert('Top-Up Error', err?.response?.data?.message || err.message || 'Failed to initiate payment');
+      setPaymentFeedback({
+        visible: true,
+        status: 'failed',
+        title: 'Top-Up Error',
+        message: err?.response?.data?.message || err.message || 'Failed to initiate payment',
+      });
     }
   };
 
@@ -849,6 +902,41 @@ export default function WalletScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* MODAL 4: Real Razorpay Checkout (Expo Go WebView & Web JS SDK) */}
+      <RazorpayCheckoutModal
+        visible={razorpayModalVisible}
+        order={checkoutOrder}
+        onSuccess={(resp) =>
+          verifyRazorpayPaymentOnBackend(
+            resp,
+            checkoutOrder?.amount || parseFloat(topupAmount) || 0
+          )
+        }
+        onCancel={(reason) => {
+          setRazorpayModalVisible(false);
+          setCheckoutOrder(null);
+          setIsProcessingPayment(false);
+          setPaymentFeedback({
+            visible: true,
+            status: 'cancelled',
+            title: 'Payment Cancelled',
+            message: reason || 'Payment was cancelled before completion.',
+          });
+        }}
+        onError={(errMsg) => {
+          setRazorpayModalVisible(false);
+          setCheckoutOrder(null);
+          setIsProcessingPayment(false);
+          setPaymentFeedback({
+            visible: true,
+            status: 'failed',
+            title: 'Payment Failed',
+            message: errMsg || 'Gateway payment could not be completed.',
+          });
+        }}
+        onSimulateTestPayment={handleSimulateOfflineTest}
+      />
     </SafeAreaView>
   );
 }

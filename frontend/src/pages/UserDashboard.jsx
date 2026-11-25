@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { io } from 'socket.io-client';
 
@@ -10,10 +10,12 @@ import { RidesAvailableView } from '../components/dashboard/RidesAvailableView';
 import { UserDetailsView } from '../components/dashboard/UserDetailsView';
 import { SecuritySettingsView } from '../components/dashboard/SecuritySettingsView';
 import { CommunityChatView } from '../components/dashboard/CommunityChatView';
+import { WalletView } from '../components/dashboard/WalletView';
 
 export function UserDashboard() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('overview');
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') || 'overview');
   const [isOpenMobile, setIsOpenMobile] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [userProfile, setUserProfile] = useState(null);
@@ -297,6 +299,15 @@ export function UserDashboard() {
               userProfile={userProfile}
               API_URL={API_URL}
               theme={theme}
+            />
+          )}
+
+          {activeTab === 'wallet' && (
+            <WalletView
+              userProfile={userProfile}
+              API_URL={API_URL}
+              theme={theme}
+              socket={socketRef.current}
             />
           )}
 

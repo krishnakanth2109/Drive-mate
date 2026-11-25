@@ -59,9 +59,34 @@ export const riderService = {
     return res.data;
   },
 
-  // --- Wallet & Payout ---
+  // --- Wallet, Razorpay Top-Up & Payout ---
   getWallet: async (): Promise<RiderWalletData> => {
     const res = await api.get('/rider/wallet');
+    return res.data;
+  },
+  getAuthoritativeWallet: async (): Promise<any> => {
+    const res = await api.get('/wallet');
+    return res.data;
+  },
+  getWalletTransactions: async (page = 1, limit = 15, type?: string): Promise<any> => {
+    const query = type && type !== 'ALL' ? `&type=${type}` : '';
+    const res = await api.get(`/wallet/transactions?page=${page}&limit=${limit}${query}`);
+    return res.data;
+  },
+  createTopupOrder: async (amount: number): Promise<any> => {
+    const res = await api.post('/wallet/topup/order', { amount, currency: 'INR' });
+    return res.data;
+  },
+  verifyTopupPayment: async (payload: {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+  }): Promise<any> => {
+    const res = await api.post('/wallet/topup/verify', payload);
+    return res.data;
+  },
+  simulateTopupPayment: async (orderId: string): Promise<any> => {
+    const res = await api.post('/wallet/topup/simulate-test-payment', { orderId });
     return res.data;
   },
   requestPayout: async (amount: number, accountId?: string): Promise<{ newBalance: number; transaction: any }> => {

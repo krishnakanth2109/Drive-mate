@@ -47,6 +47,7 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/dashboard" element={<UserDashboard />} />
+          <Route path="/wallet" element={<Navigate to="/dashboard?tab=wallet" replace />} />
           <Route path="/community" element={<Navigate to="/dashboard" replace />} />
 
           {/* Staff Master Suite Portal & Real Backend Login */}

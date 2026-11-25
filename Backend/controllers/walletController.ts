@@ -78,6 +78,20 @@ export const verifyTopup = asyncHandler(async (req: AuthenticatedRequest, res: R
     razorpay_signature,
   });
 
+  // Emit real-time WebSocket update to client
+  if (req.io && userId) {
+    req.io.to(userId).emit('wallet:updated', {
+      balance: result.newBalance,
+      orderId: result.orderId,
+      transaction: result.transaction,
+    });
+    req.io.to(`user_${userId}`).emit('wallet:updated', {
+      balance: result.newBalance,
+      orderId: result.orderId,
+      transaction: result.transaction,
+    });
+  }
+
   res.status(200).json(new ApiResponse(200, result, result.message));
 });
 
@@ -125,6 +139,19 @@ export const simulatePayment = asyncHandler(async (req: AuthenticatedRequest, re
   }
 
   const result = await simulateTestPayment(userId, userType, orderId);
+
+  // Emit real-time WebSocket update to client
+  if (req.io && userId) {
+    req.io.to(userId).emit('wallet:updated', {
+      balance: result.newBalance,
+      orderId: result.orderId,
+    });
+    req.io.to(`user_${userId}`).emit('wallet:updated', {
+      balance: result.newBalance,
+      orderId: result.orderId,
+    });
+  }
+
   res.status(200).json(new ApiResponse(200, result, result.message));
 });
 
