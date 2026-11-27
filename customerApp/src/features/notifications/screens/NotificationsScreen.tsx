@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,87 +7,97 @@ import {
   TouchableOpacity,
   SafeAreaView,
   Platform,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { notificationService, NotificationItem as ApiNotificationItem } from '../services/notificationService';
+import { extractApiErrorMessage, socket } from '../../../services/api';
 
-interface NotificationItem {
-  id: string;
-  title: string;
-  message: string;
-  time: string;
-  read: boolean;
-  type: 'ride' | 'promo' | 'security';
-  icon: any;
-  color: string;
-}
-
-const INITIAL_NOTIFICATIONS: NotificationItem[] = [
-  {
-    id: '1',
-    title: 'Ride Completed',
-    message: 'Your trip with Suresh V. has ended. Total fare: ₹75. Thank you for riding with DriveMate!',
-    time: '2 hours ago',
-    read: false,
-    type: 'ride',
-    icon: 'checkmark-circle',
-    color: '#06d6a0',
-  },
-  {
-    id: '2',
-    title: '50% Off On Your Next 3 Rides!',
-    message: 'Use code DRIVEMATE50 to get up to ₹50 off on auto and car bookings this weekend.',
-    time: 'Yesterday',
-    read: false,
-    type: 'promo',
-    icon: 'pricetag',
-    color: '#f72585',
-  },
-  {
-    id: '3',
-    title: 'Security Alert',
-    message: 'New login detected from Android device in Hyderabad. If this was not you, please secure your account.',
-    time: '3 days ago',
-    read: true,
-    type: 'security',
-    icon: 'shield-checkmark',
-    color: '#4361ee',
-  },
-  {
-    id: '4',
-    title: 'Wallet Recharged',
-    message: '₹500.00 successfully credited to your DriveMate Wallet via UPI.',
-    time: '5 days ago',
-    read: true,
-    type: 'promo',
-    icon: 'wallet',
-    color: '#7209b7',
-  },
-];
+const getNotificationMeta = (type: string) => {
+  switch (type) {
+    case 'ride':
+      return { icon: 'checkmark-circle', color: '#06d6a0' };
+    case 'promo':
+    case 'bonus':
+      return { icon: 'pricetag', color: '#f72585' };
+    case 'payout':
+      return { icon: 'wallet', color: '#7209b7' };
+    case 'claim':
+      return { icon: 'shield-checkmark', color: '#4361ee' };
+    default:
+      return { icon: 'notifications', color: '#3b82f6' };
+  }
+};
 
 export default function NotificationsScreen() {
   const navigation = useNavigation<any>();
-  const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<ApiNotificationItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const markAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  const fetchNotifications = useCallback(async () => {
+    try {
+      setError(null);
+      const list = await notificationService.getNotifications();
+      setNotifications(Array.isArray(list) ? list : []);
+    } catch (err: any) {
+      setError(extractApiErrorMessage(err, 'Unable to load notifications.'));
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchNotifications();
+    const handleIncoming = () => fetchNotifications();
+    socket.on('notification', handleIncoming);
+    socket.on('ride_status_update', handleIncoming);
+    return () => {
+      socket.off('notification', handleIncoming);
+      socket.off('ride_status_update', handleIncoming);
+    };
+  }, [fetchNotifications]);
+
+  const markAllRead = async () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    try {
+      await notificationService.markAllRead();
+    } catch (err) {
+      fetchNotifications();
+    }
   };
 
-  const renderItem = ({ item }: { item: NotificationItem }) => (
-    <View style={[styles.notificationCard, !item.read && styles.unreadCard]}>
-      <View style={[styles.iconBox, { backgroundColor: `${item.color}15` }]}>
-        <Ionicons name={item.icon} size={22} color={item.color} />
-      </View>
-      <View style={styles.contentBox}>
-        <View style={styles.cardHeader}>
-          <Text style={styles.notificationTitle}>{item.title}</Text>
-          {!item.read && <View style={styles.unreadDot} />}
+  const renderItem = ({ item }: { item: ApiNotificationItem }) => {
+    const meta = getNotificationMeta(item.type);
+    const timeText = item.createdAt
+      ? new Date(item.createdAt).toLocaleString('en-IN', {
+          day: 'numeric',
+          month: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : '';
+
+    return (
+      <View style={[styles.notificationCard, !item.isRead && styles.unreadCard]}>
+        <View style={[styles.iconBox, { backgroundColor: `${meta.color}15` }]}>
+          <Ionicons name={meta.icon as any} size={22} color={meta.color} />
         </View>
-        <Text style={styles.notificationMessage}>{item.message}</Text>
-        <Text style={styles.timeText}>{item.time}</Text>
+        <View style={styles.contentBox}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.notificationTitle}>{item.title}</Text>
+            {!item.isRead && <View style={styles.unreadDot} />}
+          </View>
+          <Text style={styles.notificationMessage}>{item.body}</Text>
+          {timeText ? <Text style={styles.timeText}>{timeText}</Text> : null}
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -96,24 +106,56 @@ export default function NotificationsScreen() {
           <Ionicons name="arrow-back" size={24} color="#1a1a2e" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Notifications</Text>
-        <TouchableOpacity onPress={markAllRead}>
-          <Text style={styles.markReadText}>Read All</Text>
+        <TouchableOpacity onPress={markAllRead} disabled={notifications.length === 0}>
+          <Text style={[styles.markReadText, notifications.length === 0 && { opacity: 0.4 }]}>Read All</Text>
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        data={notifications}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="notifications-off-outline" size={60} color="#ccc" />
-            <Text style={styles.emptyTitle}>No Notifications</Text>
-            <Text style={styles.emptySub}>You are all caught up!</Text>
-          </View>
-        }
-      />
+      {loading && !refreshing ? (
+        <View style={styles.emptyContainer}>
+          <ActivityIndicator size="large" color="#f72585" />
+          <Text style={styles.emptySub}>Loading notifications...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="cloud-offline-outline" size={54} color="#ef4444" />
+          <Text style={styles.emptyTitle}>Connection Error</Text>
+          <Text style={styles.emptySub}>{error}</Text>
+          <TouchableOpacity
+            style={{ marginTop: 14, backgroundColor: '#f72585', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 }}
+            onPress={() => {
+              setLoading(true);
+              fetchNotifications();
+            }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '700' }}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <FlatList
+          data={notifications}
+          keyExtractor={(item) => item._id || item.id || String(item.createdAt)}
+          renderItem={renderItem}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true);
+                fetchNotifications();
+              }}
+              colors={['#f72585']}
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="notifications-off-outline" size={60} color="#ccc" />
+              <Text style={styles.emptyTitle}>No Notifications</Text>
+              <Text style={styles.emptySub}>You are all caught up!</Text>
+            </View>
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { adminApi } from '../../../api/adminApi';
 import { 
   Headphones, 
   AlertTriangle, 
@@ -23,20 +23,18 @@ export function SupportTicketsView() {
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [toast, setToast] = useState(null);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-
   const fetchTickets = async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`${API_URL}/support/tickets`);
-      const data = res.data?.data || res.data || [];
-      const formatted = (Array.isArray(data) ? data : []).map(t => ({
+      const data = await adminApi.getSupportTickets();
+      const formatted = (Array.isArray(data) ? data : []).map((t) => ({
         ...t,
         id: t.ticketNumber || t.id || t._id,
+        rawId: t.id || t._id,
         user: t.userName || t.user || 'User',
         phone: t.userPhone || t.phone || 'N/A',
         rideId: t.rideId || 'N/A',
-        date: t.createdAt ? new Date(t.createdAt).toLocaleString() : t.date || 'Recent',
+        date: t.createdAt ? new Date(t.createdAt).toLocaleString() : '',
       }));
       setTickets(formatted);
     } catch (err) {
@@ -53,20 +51,23 @@ export function SupportTicketsView() {
 
   const handleResolve = async (ticketId) => {
     try {
-      await axios.patch(`${API_URL}/support/tickets/${ticketId}`, { status: 'resolved' });
+      await adminApi.updateSupportTicket(ticketId, { status: 'resolved' });
+      setTickets((prev) =>
+        prev.map((t) => (t.id === ticketId || t.rawId === ticketId || t._id === ticketId ? { ...t, status: 'resolved' } : t))
+      );
+      setSelectedTicket(null);
+      setToast({
+        title: 'Ticket Marked Resolved',
+        message: `Ticket ${ticketId} resolved and customer notified.`,
+        type: 'success'
+      });
     } catch (e) {
-      console.warn('Backend patch failed, updating local state', e);
+      setToast({
+        title: 'Resolution Failed',
+        message: e.message || 'Could not update ticket on server.',
+        type: 'error'
+      });
     }
-
-    setTickets(prev =>
-      prev.map(t => (t.id === ticketId || t._id === ticketId ? { ...t, status: 'resolved' } : t))
-    );
-    setSelectedTicket(null);
-    setToast({
-      title: 'Ticket Marked Resolved',
-      message: `Ticket ${ticketId} resolved and customer notified.`,
-      type: 'success'
-    });
   };
 
   const columns = [

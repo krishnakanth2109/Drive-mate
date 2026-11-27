@@ -16,6 +16,7 @@ import {
   getRiderEarnings,
   getRiderIncentives,
   getRiderOffers,
+  getRiderPerformance,
   getRiderNotifications,
   markRiderNotificationsRead,
   getDriverFaqs,
@@ -63,10 +64,11 @@ router.get('/wallet', getRiderWallet);
 router.post('/wallet/payout', requestPayout);
 router.post('/wallet/link-account', linkPaymentAccount);
 
-// Earnings, Incentives & Offers
+// Earnings, Incentives, Performance & Offers
 router.get('/earnings', getRiderEarnings);
 router.get('/incentives', getRiderIncentives);
 router.get('/offers', getRiderOffers);
+router.get('/performance', getRiderPerformance);
 
 // Rides History Alias
 router.get('/rides', getRiderHistory);

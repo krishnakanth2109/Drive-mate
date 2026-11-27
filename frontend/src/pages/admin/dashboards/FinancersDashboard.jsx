@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
+import { adminApi } from '../../../api/adminApi';
 import { 
   CreditCard, 
   ArrowDownLeft, 
@@ -29,54 +29,47 @@ export function FinancersDashboard() {
     pendingAuthorizationAmount: 0,
     pendingBatchesCount: 0,
     activeRefundVouchersCount: 0,
-    settlementSuccessRate: '99.4%'
+    settlementSuccessRate: '0.0%'
   });
   const [loading, setLoading] = useState(true);
   const [selectedPayout, setSelectedPayout] = useState(null);
   const [toast, setToast] = useState(null);
   const [processing, setProcessing] = useState(false);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-  const token = sessionStorage.getItem('vlt_master_token');
-  const authHeader = token ? { headers: { 'x-auth-token': token } } : {};
-
   const fetchFinanceData = useCallback(async () => {
     setLoading(true);
     try {
-      const [disbursementsRes, metricsRes] = await Promise.allSettled([
-        axios.get(`${API_URL}/finance/disbursements`, authHeader),
-        axios.get(`${API_URL}/finance/metrics`, authHeader)
+      const [disbursementsData, metricsData] = await Promise.all([
+        adminApi.getDisbursements(),
+        adminApi.getFinanceMetrics(),
       ]);
 
-      if (disbursementsRes.status === 'fulfilled' && disbursementsRes.value.data?.data) {
-        const raw = disbursementsRes.value.data.data;
-        const mapped = (Array.isArray(raw) ? raw : []).map(d => ({
-          id: d.payoutRef || `PAY-${d.id.slice(-6).toUpperCase()}`,
-          rawId: d.id,
-          driver: d.driverName || 'Driver Partner',
-          phone: d.driverPhone || 'N/A',
-          amount: `₹${Number(d.amount).toLocaleString('en-IN')}`,
-          rawAmount: Number(d.amount),
-          bank: d.bankName || 'State Bank of India',
-          ifsc: d.ifscCode || 'SBIN0001234',
-          accNumber: d.accountNumberMasked || (d.accountNumber ? `••••••••${d.accountNumber.slice(-4)}` : '••••••••4812'),
-          requestedAt: d.createdAt ? new Date(d.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Recent',
-          status: d.status?.toLowerCase() || 'pending'
-        }));
-        setPayouts(mapped);
-      } else {
-        setPayouts([]);
-      }
+      const raw = Array.isArray(disbursementsData) ? disbursementsData : [];
+      const mapped = raw.map((d) => ({
+        id: d.payoutRef || `PAY-${d.id.slice(-6).toUpperCase()}`,
+        rawId: d.id,
+        driver: d.driverName || 'Driver Partner',
+        phone: d.driverPhone || 'N/A',
+        amount: `₹${Number(d.amount || 0).toLocaleString('en-IN')}`,
+        rawAmount: Number(d.amount || 0),
+        bank: d.bankName || 'Bank Not Linked',
+        ifsc: d.ifscCode || '—',
+        accNumber: d.accountNumberMasked || (d.accountNumber ? `••••••••${d.accountNumber.slice(-4)}` : '—'),
+        requestedAt: d.createdAt ? new Date(d.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '',
+        status: d.status?.toLowerCase() || 'pending'
+      }));
+      setPayouts(mapped);
 
-      if (metricsRes.status === 'fulfilled' && metricsRes.value.data?.data) {
-        setMetrics(metricsRes.value.data.data);
+      if (metricsData) {
+        setMetrics(metricsData);
       }
     } catch (err) {
       console.error('Failed to load disbursements from backend:', err);
+      setToast({ title: 'Load Error', message: err.message || 'Unable to load payouts.', type: 'error' });
     } finally {
       setLoading(false);
     }
-  }, [API_URL, token]);
+  }, []);
 
   useEffect(() => {
     fetchFinanceData();
@@ -86,31 +79,24 @@ export function FinancersDashboard() {
     const targetId = payout.rawId || payout.id;
     setProcessing(true);
     try {
-      await axios.patch(`${API_URL}/finance/disbursements/${targetId}/execute`, {
-        status: 'completed'
-      }, authHeader);
+      await adminApi.executeDisbursement(targetId, { status: 'completed' });
 
-      setPayouts(prev =>
-        prev.map(p => (p.rawId === targetId || p.id === targetId ? { ...p, status: 'completed' } : p))
+      setPayouts((prev) =>
+        prev.map((p) => (p.rawId === targetId || p.id === targetId ? { ...p, status: 'completed' } : p))
       );
       setSelectedPayout(null);
       setToast({
         title: 'Disbursement Executed',
-        message: `IMPS wire transfer initiated for ${payout.id}. Driver wallet balance debited.`,
+        message: `Transfer initiated for ${payout.id}. Driver wallet balance updated.`,
         type: 'success'
       });
       fetchFinanceData();
     } catch (err) {
       console.error('Execution error:', err);
-      // Fallback local update
-      setPayouts(prev =>
-        prev.map(p => (p.rawId === targetId || p.id === targetId ? { ...p, status: 'completed' } : p))
-      );
-      setSelectedPayout(null);
       setToast({
-        title: 'Disbursement Completed',
-        message: `Payout ${payout.id} processed successfully.`,
-        type: 'success'
+        title: 'Disbursement Failed',
+        message: err.message || 'Could not process transfer on backend.',
+        type: 'error'
       });
     } finally {
       setProcessing(false);
@@ -121,24 +107,10 @@ export function FinancersDashboard() {
     const targetId = payout.rawId || payout.id;
     setProcessing(true);
     try {
-      await axios.patch(`${API_URL}/finance/disbursements/${targetId}/execute`, {
-        status: 'pending'
-      }, authHeader);
+      await adminApi.executeDisbursement(targetId, { status: 'pending' });
 
-      setPayouts(prev =>
-        prev.map(p => (p.rawId === targetId || p.id === targetId ? { ...p, status: 'pending' } : p))
-      );
-      setSelectedPayout(null);
-      setToast({
-        title: 'Transfer Queued for Retry',
-        message: `Transfer ${payout.id} rescheduled with fallback payment gateway node.`,
-        type: 'info'
-      });
-      fetchFinanceData();
-    } catch (err) {
-      console.error('Retry error:', err);
-      setPayouts(prev =>
-        prev.map(p => (p.rawId === targetId || p.id === targetId ? { ...p, status: 'pending' } : p))
+      setPayouts((prev) =>
+        prev.map((p) => (p.rawId === targetId || p.id === targetId ? { ...p, status: 'pending' } : p))
       );
       setSelectedPayout(null);
       setToast({
@@ -146,13 +118,21 @@ export function FinancersDashboard() {
         message: `Transfer ${payout.id} rescheduled.`,
         type: 'info'
       });
+      fetchFinanceData();
+    } catch (err) {
+      console.error('Retry error:', err);
+      setToast({
+        title: 'Retry Failed',
+        message: err.message || 'Could not reschedule payout.',
+        type: 'error'
+      });
     } finally {
       setProcessing(false);
     }
   };
 
   const handleProcessAllPending = async () => {
-    const pendingList = payouts.filter(p => p.status === 'pending');
+    const pendingList = payouts.filter((p) => p.status === 'pending');
     if (pendingList.length === 0) {
       setToast({
         title: 'Queue Empty',
@@ -164,22 +144,25 @@ export function FinancersDashboard() {
 
     setProcessing(true);
     try {
-      await Promise.allSettled(
-        pendingList.map(p => 
-          axios.patch(`${API_URL}/finance/disbursements/${p.rawId || p.id}/execute`, { status: 'completed' }, authHeader)
-        )
+      await Promise.all(
+        pendingList.map((p) => adminApi.executeDisbursement(p.rawId || p.id, { status: 'completed' }))
       );
 
       const totalProcessed = pendingList.reduce((acc, p) => acc + (p.rawAmount || 0), 0);
-      setPayouts(prev => prev.map(p => p.status === 'pending' ? { ...p, status: 'completed' } : p));
+      setPayouts((prev) => prev.map((p) => (p.status === 'pending' ? { ...p, status: 'completed' } : p)));
       setToast({
         title: 'Batch Disbursement Triggered',
-        message: `Processed ${pendingList.length} pending transfers totaling ₹${totalProcessed.toLocaleString('en-IN')} via IMPS.`,
+        message: `Processed ${pendingList.length} pending transfers totaling ₹${totalProcessed.toLocaleString('en-IN')}.`,
         type: 'success'
       });
       fetchFinanceData();
     } catch (err) {
       console.error('Batch process error:', err);
+      setToast({
+        title: 'Batch Failed',
+        message: err.message || 'Some transfers failed to process.',
+        type: 'error'
+      });
     } finally {
       setProcessing(false);
     }

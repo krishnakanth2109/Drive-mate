@@ -1,13 +1,18 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Linking, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Linking, SafeAreaView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRider } from '../../context/RiderContext';
 
 export default function ContactCustomerScreen({ navigation, route }: any) {
-  // Mock customer data, in real app get from route.params or context
-  const customerName = route?.params?.customerName || 'John Doe';
-  const customerPhone = route?.params?.customerPhone || '+1234567890';
+  const { activeRide } = useRider();
+  const customerName = route?.params?.customerName || activeRide?.customer?.name || 'Passenger';
+  const customerPhone = route?.params?.customerPhone || activeRide?.customer?.phone || '';
 
   const handleCall = () => {
+    if (!customerPhone) {
+      Alert.alert('Unavailable', 'Customer phone number is not available for this ride.');
+      return;
+    }
     Linking.openURL(`tel:${customerPhone}`);
   };
 

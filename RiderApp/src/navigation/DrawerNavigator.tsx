@@ -69,14 +69,14 @@ function CustomDrawerContent(props: any) {
     .map(p => p[0]?.toUpperCase())
     .join('') || 'DR';
 
-  const driverPhone = profile?.phone || profile?.email || 'Verified Partner';
+  const driverPhone = profile?.phone || profile?.email || 'No contact on file';
   const vehicleText = vehicle?.model 
-    ? `${vehicle.model} • ${vehicle.plate || ''}`.trim()
-    : (profile?.vehicleType ? `${profile.vehicleType.toUpperCase()} PARTNER` : 'DRIVE MATE PARTNER');
+    ? `${vehicle.model}${vehicle.plate ? ` • ${vehicle.plate}` : ''}`.trim()
+    : (profile?.vehicleType ? `${profile.vehicleType.toUpperCase()} PARTNER` : 'PARTNER DRIVER');
 
-  const ratingDisplay = profile?.rating ? Number(profile.rating).toFixed(1) : '4.9';
-  const todayEarningsDisplay = profile?.todayEarnings !== undefined ? `₹${profile.todayEarnings}` : '₹850';
-  const totalRidesDisplay = profile?.totalRides ?? 24;
+  const ratingDisplay = profile?.rating ? Number(profile.rating).toFixed(1) : '—';
+  const todayEarningsDisplay = profile?.todayEarnings !== undefined ? `₹${profile.todayEarnings}` : '₹0';
+  const totalRidesDisplay = profile?.totalRides ?? 0;
 
   const handleLogoutPress = () => {
     Alert.alert(

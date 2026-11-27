@@ -19,7 +19,10 @@ export interface RouteCoordinate {
 
 export interface RouteDetails {
   distance: number; // in kilometers
-  duration: number; // in minutes
+  duration: number; // traffic-aware duration in minutes
+  staticDuration?: number; // free-flow duration without traffic in minutes
+  trafficDelayMinutes?: number; // extra delay caused by road traffic
+  trafficRatio?: number; // duration / staticDuration
   polyline: string; // encoded polyline
   coordinates: RouteCoordinate[]; // decoded road coordinates
 }
@@ -425,7 +428,7 @@ export const getRouteDetails = async (
           headers: {
             'Content-Type': 'application/json',
             'X-Goog-Api-Key': API_KEY,
-            'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline',
+            'X-Goog-FieldMask': 'routes.duration,routes.staticDuration,routes.distanceMeters,routes.polyline.encodedPolyline',
           },
           timeout: 5000,
         }
@@ -434,14 +437,24 @@ export const getRouteDetails = async (
       const route = res.data?.routes?.[0];
       if (route && route.polyline?.encodedPolyline) {
         const distanceMeters = route.distanceMeters || 0;
-        // duration is returned in format "3600s"
+        // duration & staticDuration are returned in format "3600s"
         const durationSec = route.duration ? parseInt(route.duration.replace('s', ''), 10) : 0;
+        const staticDurationSec = route.staticDuration
+          ? parseInt(route.staticDuration.replace('s', ''), 10)
+          : durationSec;
+        const durationMin = Math.max(1, Math.round(durationSec / 60));
+        const staticDurationMin = Math.max(1, Math.round(staticDurationSec / 60));
+        const trafficDelayMinutes = Math.max(0, durationMin - staticDurationMin);
+        const trafficRatio = staticDurationSec > 0 ? Number((durationSec / staticDurationSec).toFixed(2)) : 1.0;
         const polyline = route.polyline.encodedPolyline;
         const coordinates = decodePolyline(polyline);
 
         const data: RouteDetails = {
           distance: distanceMeters / 1000, // in km
-          duration: Math.max(1, Math.round(durationSec / 60)), // in minutes
+          duration: durationMin,
+          staticDuration: staticDurationMin,
+          trafficDelayMinutes,
+          trafficRatio,
           polyline,
           coordinates,
         };
@@ -469,6 +482,9 @@ export const getRouteDetails = async (
       const data: RouteDetails = {
         distance,
         duration,
+        staticDuration: duration,
+        trafficDelayMinutes: 0,
+        trafficRatio: 1.0,
         polyline,
         coordinates,
       };
@@ -483,6 +499,7 @@ export const getRouteDetails = async (
   // Final fallback: Haversine distance with estimated road detour factor 1.25x
   const directDist = getDistanceFromLatLonInKm(start.lat, start.lng, end.lat, end.lng);
   const roadDist = directDist * 1.25;
+  const estDuration = Math.max(1, Math.round((roadDist / 25) * 60));
   const coordinates: RouteCoordinate[] = [
     { latitude: start.lat, longitude: start.lng },
     { latitude: end.lat, longitude: end.lng },
@@ -490,7 +507,10 @@ export const getRouteDetails = async (
 
   return {
     distance: roadDist,
-    duration: Math.max(1, Math.round((roadDist / 25) * 60)),
+    duration: estDuration,
+    staticDuration: estDuration,
+    trafficDelayMinutes: 0,
+    trafficRatio: 1.0,
     polyline: '',
     coordinates,
   };

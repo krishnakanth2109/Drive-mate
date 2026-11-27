@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,26 +7,44 @@ import {
   Linking,
   Platform,
   Alert,
-  ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRider } from '../../context/RiderContext';
+import RiderWebMapView from '../../components/RiderWebMapView';
+import GeofenceArrivalCard from '../../components/GeofenceArrivalCard';
+import { evaluateDriverGeofence } from '../../utils/geofence';
 
 export default function PickupNavigationScreen({ navigation }: any) {
-  const { activeRide, arriveAtPickup } = useRider();
-  const [loading, setLoading] = useState(false);
+  const {
+    activeRide,
+    arriveAtPickup,
+    location,
+    driverGps,
+    googleMapsKey,
+    isArrivalSubmitting,
+    refreshCurrentGps,
+  } = useRider();
 
-  const pickupLat = activeRide?.pickup?.lat || 28.6139;
-  const pickupLng = activeRide?.pickup?.lng || 77.2090;
+  const pickupLat = activeRide?.pickup?.lat ?? null;
+  const pickupLng = activeRide?.pickup?.lng ?? null;
   const pickupAddress = activeRide?.pickup?.address || 'Pickup Location';
   const customerName = activeRide?.customer?.name || 'Customer';
   const customerPhone = activeRide?.customer?.phone || '';
 
+  const pickupEval = useMemo(
+    () => evaluateDriverGeofence(driverGps, activeRide?.pickup, 'pickup'),
+    [driverGps, activeRide?.pickup]
+  );
+
   const handleOpenExternalMaps = () => {
+    if (pickupLat == null || pickupLng == null) {
+      Alert.alert('Navigation Error', 'Pickup coordinates unavailable');
+      return;
+    }
     const url = Platform.select({
       ios: `maps://app?daddr=${pickupLat},${pickupLng}`,
       android: `google.navigation:q=${pickupLat},${pickupLng}`,
-      default: `https://www.google.com/maps/dir/?api=1&destination=${pickupLat},${pickupLng}`
+      default: `https://www.google.com/maps/dir/?api=1&destination=${pickupLat},${pickupLng}`,
     });
     if (url) {
       Linking.openURL(url).catch(() => {
@@ -47,32 +65,40 @@ export default function PickupNavigationScreen({ navigation }: any) {
     navigation.navigate('ChatScreen', {
       customerName,
       customerPhone,
-      rideId: activeRide?._id
+      rideId: activeRide?._id,
     });
   };
 
   const handleArrived = async () => {
-    setLoading(true);
     const success = await arriveAtPickup();
-    setLoading(false);
     if (success) {
-      Alert.alert('Status Updated', 'Customer notified that you have arrived at pickup!');
+      Alert.alert('Arrival Verified', 'Customer notified that you have arrived at the pickup point.');
       navigation.navigate('ActiveOrder');
     }
   };
 
+  const centerPoint =
+    driverGps?.latitude != null && driverGps?.longitude != null
+      ? { latitude: driverGps.latitude, longitude: driverGps.longitude }
+      : location || (pickupLat != null && pickupLng != null ? { latitude: Number(pickupLat), longitude: Number(pickupLng) } : null);
+
   return (
     <View style={styles.container}>
-      {/* Map visual card */}
+      {/* Live Map with 50m Pickup Geofence Circle */}
       <View style={styles.mapArea}>
-        <Ionicons name="navigate-circle" size={90} color="#f72585" />
-        <Text style={styles.navStatusText}>Navigating to Pickup</Text>
-        <Text style={styles.targetAddress} numberOfLines={2}>
-          {pickupAddress}
-        </Text>
-        <TouchableOpacity style={styles.externalMapsBtn} onPress={handleOpenExternalMaps}>
-          <Ionicons name="map-outline" size={18} color="#fff" />
-          <Text style={styles.externalMapsText}>Open in Google Maps</Text>
+        <RiderWebMapView
+          center={centerPoint}
+          googleMapsKey={googleMapsKey}
+          zoom={17}
+          pickupCoord={pickupLat != null && pickupLng != null ? { lat: Number(pickupLat), lng: Number(pickupLng) } : null}
+          activeGeofenceTarget="pickup"
+          isWithinGeofence={pickupEval.isWithinRadius}
+          style={StyleSheet.absoluteFill}
+        />
+
+        <TouchableOpacity style={styles.externalMapsFloatingBtn} onPress={handleOpenExternalMaps}>
+          <Ionicons name="map-outline" size={16} color="#fff" />
+          <Text style={styles.externalMapsText}>Google Maps</Text>
         </TouchableOpacity>
       </View>
 
@@ -82,21 +108,21 @@ export default function PickupNavigationScreen({ navigation }: any) {
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
         <View style={styles.instructionBox}>
-          <Ionicons name="arrow-up" size={28} color="#fff" />
+          <Ionicons name="navigate" size={24} color="#fff" />
           <View style={{ marginLeft: 10, flex: 1 }}>
-            <Text style={styles.instructionText}>Head towards pickup point</Text>
-            <Text style={styles.instructionSub}>
-              {activeRide?.distance ? `${activeRide.distance} km remaining` : 'On the way'}
+            <Text style={styles.instructionText}>Navigating to Pickup</Text>
+            <Text style={styles.instructionSub} numberOfLines={1}>
+              {pickupEval.distanceLabel} • {pickupAddress}
             </Text>
           </View>
         </View>
       </View>
 
-      {/* Bottom Customer & Actions Sheet */}
+      {/* Bottom Customer & Geofence Actions Sheet */}
       <View style={styles.bottomCard}>
         <View style={styles.customerRow}>
           <View style={styles.avatar}>
-            <Ionicons name="person" size={24} color="#fff" />
+            <Ionicons name="person" size={22} color="#fff" />
           </View>
           <View style={{ flex: 1, marginLeft: 12 }}>
             <Text style={styles.customerName}>{customerName}</Text>
@@ -112,30 +138,31 @@ export default function PickupNavigationScreen({ navigation }: any) {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={styles.detailsBtn}
-            onPress={() => navigation.navigate('RouteDetails')}
-          >
-            <Ionicons name="list" size={18} color="#fff" />
-            <Text style={styles.detailsBtnText}>Route Steps</Text>
-          </TouchableOpacity>
+        {activeRide?.status === 'arrived' ? (
+          <View style={styles.arrivedConfirmedBox}>
+            <Ionicons name="checkmark-circle" size={20} color="#10b981" />
+            <Text style={styles.arrivedConfirmedText}>
+              Arrival confirmed at pickup. Return to dashboard to enter customer OTP.
+            </Text>
+          </View>
+        ) : (
+          <GeofenceArrivalCard
+            mode="pickup"
+            evaluation={pickupEval}
+            isSubmitting={isArrivalSubmitting}
+            onPressArrive={handleArrived}
+            onRefreshGps={refreshCurrentGps}
+            variant="dark"
+          />
+        )}
 
-          <TouchableOpacity
-            style={styles.arrivedBtn}
-            onPress={handleArrived}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                <Text style={styles.arrivedBtnText}>I Have Arrived</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={styles.detailsBtn}
+          onPress={() => navigation.navigate('RouteDetails')}
+        >
+          <Ionicons name="list" size={16} color="#cbd5e1" />
+          <Text style={styles.detailsBtnText}>View Route Details</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -146,33 +173,25 @@ const styles = StyleSheet.create({
   mapArea: {
     flex: 1,
     backgroundColor: '#242436',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 30,
+    position: 'relative',
   },
-  navStatusText: { color: '#fff', fontSize: 22, fontWeight: 'bold', marginTop: 15 },
-  targetAddress: {
-    color: '#a0a0b0',
-    marginTop: 8,
-    fontSize: 15,
-    textAlign: 'center',
-    lineHeight: 22,
-    maxWidth: '85%',
-  },
-  externalMapsBtn: {
+  externalMapsFloatingBtn: {
+    position: 'absolute',
+    right: 16,
+    bottom: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#34495e',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     borderRadius: 20,
-    marginTop: 20,
-    gap: 8,
+    gap: 6,
+    elevation: 6,
   },
-  externalMapsText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  externalMapsText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   overlayHeader: {
     position: 'absolute',
-    top: 50,
+    top: 48,
     left: 16,
     right: 16,
     flexDirection: 'row',
@@ -182,7 +201,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.65)',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 10,
@@ -194,17 +213,13 @@ const styles = StyleSheet.create({
     padding: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#f72585',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
     elevation: 5,
   },
-  instructionText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  instructionSub: { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 2 },
+  instructionText: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
+  instructionSub: { color: 'rgba(255,255,255,0.9)', fontSize: 12, marginTop: 2 },
   bottomCard: {
     backgroundColor: '#1E1E2C',
-    padding: 20,
+    padding: 18,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderTopWidth: 1,
@@ -213,12 +228,12 @@ const styles = StyleSheet.create({
   customerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: '#f72585',
     justifyContent: 'center',
     alignItems: 'center',
@@ -226,39 +241,37 @@ const styles = StyleSheet.create({
   customerName: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   customerStatus: { color: '#a0a0b0', fontSize: 12, marginTop: 2 },
   contactBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: '#2a2a3c',
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 8,
   },
   callBtn: { backgroundColor: '#1b3b2b' },
-  actionRow: {
+  arrivedConfirmedBox: {
     flexDirection: 'row',
-    gap: 12,
+    alignItems: 'center',
+    backgroundColor: '#1b3b2b',
+    borderRadius: 12,
+    padding: 12,
+    gap: 10,
+    marginBottom: 8,
+  },
+  arrivedConfirmedText: {
+    color: '#d1fae5',
+    fontSize: 13,
+    fontWeight: '600',
+    flex: 1,
   },
   detailsBtn: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#2a2a3c',
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: 10,
+    marginTop: 8,
     gap: 6,
   },
-  detailsBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
-  arrivedBtn: {
-    flex: 2,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#06d6a0',
-    paddingVertical: 14,
-    borderRadius: 12,
-    gap: 8,
-  },
-  arrivedBtnText: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
+  detailsBtnText: { color: '#cbd5e1', fontSize: 13, fontWeight: '600' },
 });

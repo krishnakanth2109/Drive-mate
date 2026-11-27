@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import axios from 'axios';
+import { adminApi } from '../../api/adminApi';
 
 const PermissionsContext = createContext([]);
 
@@ -15,15 +15,12 @@ export const PermissionsProvider = ({ children }) => {
           setLoading(false);
           return;
         }
-        
-        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-        const res = await axios.get(`${API_URL}/rbac/my-permissions`, {
-          headers: { 'x-auth-token': token }
-        });
-        
-        setPermissions(res.data.data || []);
+
+        const perms = await adminApi.getMyPermissions();
+        setPermissions(Array.isArray(perms) ? perms : []);
       } catch (err) {
         console.error('Failed to fetch permissions', err);
+        setPermissions([]);
       } finally {
         setLoading(false);
       }

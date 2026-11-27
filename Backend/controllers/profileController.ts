@@ -5,6 +5,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
+import { getAuthoritativeWallet } from '../services/walletService.js';
 
 export const getPaymentMethods = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id || req.user?._id;
@@ -64,23 +65,26 @@ export const getBalances = asyncHandler(async (req: AuthenticatedRequest, res: R
   const userId = req.user?.id || req.user?._id;
   if (!userId) throw new ApiError(401, 'Unauthorized');
 
-  const customer = await prisma.customer.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      walletBalance: true,
-      coinBalance: true,
-      powerPassActive: true,
-      powerPassPlan: true,
-      powerPassValidUntil: true,
-    },
-  });
+  const [customer, authWallet] = await Promise.all([
+    prisma.customer.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        walletBalance: true,
+        coinBalance: true,
+        powerPassActive: true,
+        powerPassPlan: true,
+        powerPassValidUntil: true,
+      },
+    }),
+    getAuthoritativeWallet(userId, 'customer').catch(() => null),
+  ]);
 
   if (!customer) throw new ApiError(404, 'Customer not found');
 
   const responseData = {
     _id: customer.id,
-    walletBalance: Number(customer.walletBalance),
+    walletBalance: authWallet ? Number(authWallet.balance) : Number(customer.walletBalance),
     coinBalance: customer.coinBalance,
     powerPass: {
       isActive: customer.powerPassActive,

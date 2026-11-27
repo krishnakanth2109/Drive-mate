@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, safeGet } from './api';
 import {
   RiderProfile,
   VehicleInfo,
@@ -9,6 +9,7 @@ import {
   RiderIncentivesData,
   RiderOffer,
   RiderNotification,
+  RiderPerformanceData,
   SupportFaq,
   SupportTicket,
   Ride
@@ -16,10 +17,7 @@ import {
 
 export const riderService = {
   // --- Profile ---
-  getProfile: async (): Promise<RiderProfile> => {
-    const res = await api.get('/rider/profile');
-    return res.data;
-  },
+  getProfile: async (): Promise<RiderProfile> => safeGet('/rider/profile'),
   updateProfile: async (data: Partial<RiderProfile>): Promise<RiderProfile> => {
     const res = await api.put('/rider/profile', data);
     return res.data;
@@ -98,19 +96,11 @@ export const riderService = {
     return res.data;
   },
 
-  // --- Earnings & Incentives & Offers ---
-  getEarnings: async (): Promise<RiderEarningsData> => {
-    const res = await api.get('/rider/earnings');
-    return res.data;
-  },
-  getIncentives: async (): Promise<RiderIncentivesData> => {
-    const res = await api.get('/rider/incentives');
-    return res.data;
-  },
-  getOffers: async (): Promise<RiderOffer[]> => {
-    const res = await api.get('/rider/offers');
-    return res.data;
-  },
+  // --- Earnings, Incentives, Performance & Offers ---
+  getEarnings: async (): Promise<RiderEarningsData> => safeGet('/rider/earnings'),
+  getIncentives: async (): Promise<RiderIncentivesData> => safeGet('/rider/incentives'),
+  getOffers: async (): Promise<RiderOffer[]> => safeGet('/rider/offers'),
+  getPerformance: async (): Promise<RiderPerformanceData> => safeGet('/rider/performance'),
 
   // --- Notifications ---
   getNotifications: async (): Promise<RiderNotification[]> => {

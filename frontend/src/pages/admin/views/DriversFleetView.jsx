@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import { 
   Car, 
   Phone, 
@@ -12,6 +11,7 @@ import {
   UserCheck,
   RefreshCw
 } from 'lucide-react';
+import { adminApi } from '../../../api/adminApi';
 import { DataTable } from '../../../components/common/DataTable';
 import { StatusPill } from '../../../components/common/StatusPill';
 import { DetailModal } from '../../../components/common/DetailModal';
@@ -21,28 +21,27 @@ import { NotificationToast } from '../../../components/common/NotificationToast'
 export function DriversFleetView() {
   const [drivers, setDrivers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [selectedDriver, setSelectedDriver] = useState(null);
   const [toast, setToast] = useState(null);
 
   const fetchDrivers = async () => {
     setLoading(true);
-    const token = sessionStorage.getItem('vlt_master_token');
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-    const config = token ? { headers: { 'x-auth-token': token } } : {};
+    setError(null);
 
     try {
-      const res = await axios.get(`${API_URL}/admin/drivers`, config);
-      const data = res.data?.data || res.data || [];
-      const formatted = (Array.isArray(data) ? data : []).map(d => ({
+      const data = await adminApi.getDrivers();
+      const formatted = (Array.isArray(data) ? data : []).map((d) => ({
         ...d,
-        vehiclePlate: d.vehicle?.plate || d.vehicle?.plateNumber || 'KA-01-AB-1234',
-        vehicleModel: d.vehicle?.model ? `${d.vehicle.make || ''} ${d.vehicle.model}`.trim() : (d.vehicleType || 'Bike'),
+        vehiclePlate: d.vehicle?.plate || d.vehicle?.plateNumber || 'Not registered',
+        vehicleModel: d.vehicle?.model ? `${d.vehicle.make || ''} ${d.vehicle.model}`.trim() : (d.vehicleType || 'Not set'),
         totalRides: d.completedRides || d.totalRides || 0,
         status: d.status || (d.isAvailable ? 'active' : 'offline'),
       }));
       setDrivers(formatted);
     } catch (err) {
       console.error('Failed to fetch drivers from backend:', err);
+      setError(err.message || 'Failed to fetch fleet drivers');
       setDrivers([]);
     } finally {
       setLoading(false);

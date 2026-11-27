@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,40 +9,35 @@ import {
   Linking,
   Alert,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { supportService, FaqItem } from '../services/supportService';
+import { extractApiErrorMessage } from '../../../services/api';
 
 export default function HelpScreen() {
   const navigation = useNavigation<any>();
   const [expandedFaq, setExpandedFaq] = useState<string | null>(null);
+  const [faqs, setFaqs] = useState<FaqItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const faqs = [
-    {
-      id: '1',
-      question: 'How do I cancel my ride?',
-      answer:
-        'You can cancel your ride before the driver arrives by tapping the "Cancel Ride" option in the ride options menu. Cancellation fees may apply if cancelled after 5 minutes.',
-    },
-    {
-      id: '2',
-      question: 'How does the DriveMate Wallet work?',
-      answer:
-        'DriveMate Wallet allows you to add funds via UPI or Card and enjoy one-click automated checkout for all your bike, auto, and cab bookings.',
-    },
-    {
-      id: '3',
-      question: 'What should I do if I forgot an item in the car?',
-      answer:
-        'Go to "My Rides", find the specific trip, and tap "Need Help?". You will be connected to our 24/7 lost & found support team to contact your driver.',
-    },
-    {
-      id: '4',
-      question: 'How is the ride fare calculated?',
-      answer:
-        'Fares are based on base fare, total distance (km), estimated trip duration, and local traffic conditions. What you see on the estimation screen is your guaranteed price.',
-    },
-  ];
+  const loadFaqs = useCallback(async () => {
+    try {
+      setError(null);
+      const list = await supportService.getFaqs('customer');
+      setFaqs(Array.isArray(list) ? list : []);
+    } catch (err: any) {
+      setError(extractApiErrorMessage(err, 'Unable to load FAQs.'));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadFaqs();
+  }, [loadFaqs]);
 
   const handleCallSupport = () => {
     Linking.openURL('tel:+918001234567').catch(() => {
@@ -98,29 +93,47 @@ export default function HelpScreen() {
 
         {/* FAQs */}
         <Text style={styles.sectionHeader}>Frequently Asked Questions</Text>
-        <View style={styles.faqList}>
-          {faqs.map((faq) => {
-            const isExpanded = expandedFaq === faq.id;
-            return (
-              <TouchableOpacity
-                key={faq.id}
-                style={styles.faqItem}
-                activeOpacity={0.7}
-                onPress={() => setExpandedFaq(isExpanded ? null : faq.id)}
-              >
-                <View style={styles.faqQuestionRow}>
-                  <Text style={styles.faqQuestion}>{faq.question}</Text>
-                  <Ionicons
-                    name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                    size={20}
-                    color="#666"
-                  />
-                </View>
-                {isExpanded && <Text style={styles.faqAnswer}>{faq.answer}</Text>}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        {loading ? (
+          <ActivityIndicator size="small" color="#f72585" style={{ marginVertical: 20 }} />
+        ) : error ? (
+          <View style={{ paddingVertical: 12 }}>
+            <Text style={{ color: '#ef4444', marginBottom: 8 }}>{error}</Text>
+            <TouchableOpacity onPress={loadFaqs}>
+              <Text style={{ color: '#f72585', fontWeight: '700' }}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.faqList}>
+            {faqs.map((faq) => {
+              const isExpanded = expandedFaq === faq.id;
+              return (
+                <TouchableOpacity
+                  key={faq.id}
+                  style={styles.faqItem}
+                  activeOpacity={0.7}
+                  onPress={() => setExpandedFaq(isExpanded ? null : faq.id)}
+                >
+                  <View style={styles.faqQuestionRow}>
+                    <Text style={styles.faqQuestion}>{faq.question}</Text>
+                    <Ionicons
+                      name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                      size={20}
+                      color="#666"
+                    />
+                  </View>
+                  {isExpanded && <Text style={styles.faqAnswer}>{faq.answer}</Text>}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+
+        <TouchableOpacity
+          style={{ marginTop: 18, backgroundColor: '#1a1a2e', borderRadius: 12, paddingVertical: 14, alignItems: 'center' }}
+          onPress={() => navigation.navigate('SupportTicket')}
+        >
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>View & Raise Support Tickets</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );

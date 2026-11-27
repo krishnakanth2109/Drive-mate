@@ -15,44 +15,14 @@ const generateId = (): string => crypto.randomBytes(12).toString('hex');
  * eliminating 404s when using stale/test session tokens.
  */
 export const resolveRider = async (riderId?: string) => {
-  if (riderId) {
-    const existing = await prisma.rider.findUnique({ where: { id: riderId } });
-    if (existing) return existing;
+  if (!riderId) {
+    throw new ApiError(401, 'Unauthorized: driver token required');
   }
-  let fallback = await prisma.rider.findFirst();
-  if (!fallback) {
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash('rider123', salt);
-    fallback = await prisma.rider.create({
-      data: {
-        id: riderId || generateId(),
-        name: 'Ramesh Patel',
-        email: 'ramesh.patel@drivemate.in',
-        phone: '+919876543210',
-        password: hashedPassword,
-        vehicleType: 'bike',
-        walletBalance: 3450,
-        totalEarnings: 18250,
-        totalRides: 48,
-        rating: 4.88,
-        isOnline: true,
-        vehicle: {
-          model: 'Honda Activa 6G',
-          plate: 'KA-01-AB-1234',
-          year: '2022',
-          color: 'Matte Black',
-          insuranceExpiry: 'Active (12 Aug 2027)',
-          pollutionStatus: 'Active',
-        },
-        preferences: {
-          autoAccept: true,
-          navigationApp: 'Google Maps',
-          darkMode: false,
-        },
-      },
-    });
+  const existing = await prisma.rider.findUnique({ where: { id: String(riderId) } });
+  if (!existing) {
+    throw new ApiError(404, 'Driver profile not found');
   }
-  return fallback;
+  return existing;
 };
 
 // --- PROFILE & VEHICLE & DOCUMENTS & PREFERENCES ---
@@ -65,26 +35,31 @@ export const getRiderProfile = asyncHandler(async (req: AuthenticatedRequest, re
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
-  const todayRides = await prisma.ride.findMany({
-    where: {
-      riderId: targetId,
-      status: 'completed',
-      updatedAt: { gte: todayStart },
-    },
-  });
+  const [todayRides, totalRidesCount, authWallet] = await Promise.all([
+    prisma.ride.findMany({
+      where: {
+        riderId: targetId,
+        status: 'completed',
+        updatedAt: { gte: todayStart },
+      },
+    }),
+    prisma.ride.count({
+      where: { riderId: targetId, status: 'completed' },
+    }),
+    getAuthoritativeWallet(targetId, 'rider').catch(() => null),
+  ]);
 
   const todayEarnings = todayRides.reduce((sum, r) => sum + Number(r.fare || 0), 0);
-  const totalRidesCount = await prisma.ride.count({
-    where: { riderId: targetId, status: 'completed' },
-  });
-
   const { password: _, ...riderWithoutPassword } = rider;
 
   const responseData = {
     ...riderWithoutPassword,
     _id: rider.id,
-    todayEarnings: todayEarnings > 0 ? todayEarnings : 850,
-    totalRides: totalRidesCount > 0 ? totalRidesCount : (rider.totalRides || 24),
+    rating: Number(rider.rating ?? 0),
+    walletBalance: authWallet ? Number(authWallet.balance) : Number(rider.walletBalance ?? 0),
+    todayEarnings,
+    totalRides: totalRidesCount,
+    totalEarnings: Number(rider.totalEarnings ?? 0),
   };
 
   res.status(200).json(new ApiResponse(200, responseData, 'Rider profile fetched'));
@@ -114,19 +89,24 @@ export const getRiderVehicle = asyncHandler(async (req: AuthenticatedRequest, re
   const riderId = req.user?.id || req.user?._id;
   const rider = await resolveRider(riderId);
 
-  const vehicleObj = (rider.vehicle as any) || {
-    model: 'Honda Activa 6G',
-    plate: 'KA-01-AB-1234',
-    year: '2022',
-    color: 'Matte Black',
-    insuranceExpiry: 'Active (12 Aug 2027)',
-    pollutionStatus: 'Active',
-  };
+  const v = (rider.vehicle as any) || null;
 
-  res.status(200).json(new ApiResponse(200, {
-    ...vehicleObj,
-    vehicleType: rider.vehicleType,
-  }, 'Vehicle details fetched'));
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        model: v?.model || '',
+        plate: v?.plate || v?.plateNumber || '',
+        year: v?.year ? String(v.year) : '',
+        color: v?.color || '',
+        insuranceExpiry: v?.insuranceExpiry || '',
+        pollutionStatus: v?.pollutionStatus || '',
+        vehicleType: rider.vehicleType || '',
+        isConfigured: Boolean(v?.model || v?.plate || v?.plateNumber),
+      },
+      'Vehicle details fetched'
+    )
+  );
 });
 
 export const updateRiderVehicle = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
@@ -162,18 +142,76 @@ export const updateRiderVehicle = asyncHandler(async (req: AuthenticatedRequest,
   }, 'Vehicle updated successfully'));
 });
 
+const DOC_TITLE_BY_TYPE: Record<string, string> = {
+  DRIVING_LICENSE: 'Driving License',
+  AADHAAR: 'Aadhaar Card',
+  PAN: 'PAN Card',
+  RC: 'Vehicle RC Book',
+  INSURANCE: 'Vehicle Insurance',
+  FITNESS_CERTIFICATE: 'Fitness Certificate',
+  PERMIT: 'Commercial Permit',
+};
+
+const normalizeDocStatus = (rawStatus?: string | null): 'Approved' | 'Pending Review' | 'Rejected' | 'Required' => {
+  const upper = String(rawStatus || '').toUpperCase();
+  if (upper === 'VERIFIED' || upper === 'APPROVED') return 'Approved';
+  if (upper === 'PENDING' || upper === 'PENDING REVIEW' || upper === 'PENDING_REVIEW' || upper === 'MANUAL_REVIEW') {
+    return 'Pending Review';
+  }
+  if (upper === 'REJECTED' || upper === 'FAILED' || upper === 'EXPIRED') return 'Rejected';
+  return 'Required';
+};
+
 export const getRiderDocuments = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const riderId = req.user?.id || req.user?._id;
   const rider = await resolveRider(riderId);
 
-  const defaultDocs = [
-    { id: '1', title: 'Driving License', status: 'Approved', documentNumber: 'DL-2022-90123' },
-    { id: '2', title: 'Vehicle RC Book', status: 'Approved', documentNumber: 'RC-KA-01-1234' },
-    { id: '3', title: 'Aadhar Card', status: 'Pending Review', documentNumber: 'XXXX-XXXX-9876' },
-    { id: '4', title: 'Background Check', status: 'Required', documentNumber: '' },
-  ];
+  const onboarding = await prisma.driverOnboarding.findUnique({
+    where: { driverId: rider.id },
+    include: {
+      documents: {
+        orderBy: { createdAt: 'desc' },
+      },
+    },
+  });
 
-  res.status(200).json(new ApiResponse(200, (rider.documents as any) || defaultDocs, 'Documents fetched'));
+  const seenTypes = new Set<string>();
+  const combinedDocs: any[] = [];
+
+  if (onboarding?.documents && onboarding.documents.length > 0) {
+    for (const doc of onboarding.documents) {
+      if (seenTypes.has(doc.documentType)) continue;
+      seenTypes.add(doc.documentType);
+      combinedDocs.push({
+        id: doc.id,
+        documentType: doc.documentType,
+        title: DOC_TITLE_BY_TYPE[doc.documentType] || doc.documentType,
+        status: normalizeDocStatus(doc.verificationStatus),
+        documentNumber: doc.documentNumber || '',
+        frontImageUrl: doc.frontImageUrl || null,
+        backImageUrl: doc.backImageUrl || null,
+        expiryDate: doc.expiryDate || null,
+        verifiedAt: doc.verifiedAt || null,
+        rejectionReason: doc.rejectionReason || null,
+      });
+    }
+  }
+
+  if (Array.isArray(rider.documents)) {
+    for (const legacy of rider.documents as any[]) {
+      const legacyKey = String(legacy.documentType || legacy.title || legacy.id);
+      if (seenTypes.has(legacyKey)) continue;
+      combinedDocs.push({
+        id: String(legacy.id || legacyKey),
+        title: legacy.title || legacyKey,
+        status: normalizeDocStatus(legacy.status),
+        documentNumber: legacy.documentNumber || '',
+        verifiedAt: legacy.verifiedAt || null,
+      });
+    }
+  }
+
+  res.status(200).json(new ApiResponse(200, combinedDocs, 'Documents fetched'));
 });
 
 export const updateRiderDocument = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
@@ -183,25 +221,20 @@ export const updateRiderDocument = asyncHandler(async (req: AuthenticatedRequest
   const rider = await resolveRider(riderId);
   const targetId = rider.id;
 
-  let docs: any[] = Array.isArray(rider.documents) ? [...(rider.documents as any[])] : [
-    { id: '1', title: 'Driving License', status: 'Approved', documentNumber: 'DL-2022-90123' },
-    { id: '2', title: 'Vehicle RC Book', status: 'Approved', documentNumber: 'RC-KA-01-1234' },
-    { id: '3', title: 'Aadhar Card', status: 'Pending Review', documentNumber: 'XXXX-XXXX-9876' },
-    { id: '4', title: 'Background Check', status: 'Required', documentNumber: '' },
-  ];
+  const docs: any[] = Array.isArray(rider.documents) ? [...(rider.documents as any[])] : [];
 
   const docIndex = docs.findIndex((d) => d.id === id);
   if (docIndex >= 0) {
     if (documentNumber !== undefined) docs[docIndex].documentNumber = documentNumber;
     if (status !== undefined) docs[docIndex].status = status;
-    docs[docIndex].verifiedAt = new Date();
+    docs[docIndex].updatedAt = new Date();
   } else {
     docs.push({
       id: id || Date.now().toString(),
       title: title || 'Document',
       documentNumber: documentNumber || '',
       status: status || 'Pending Review',
-      verifiedAt: new Date(),
+      updatedAt: new Date(),
     });
   }
 
@@ -274,32 +307,14 @@ export const getRiderWallet = asyncHandler(async (req: AuthenticatedRequest, res
   const rider = await resolveRider(riderId);
   const targetId = rider.id;
 
-  const defaultAccounts = [
-    {
-      id: `bank_${targetId.slice(-4)}`,
-      _id: `bank_${targetId.slice(-4)}`,
-      userId: targetId,
-      userModel: 'Rider',
-      type: 'Bank Account',
-      provider: 'HDFC Bank Checking',
-      last4: '8912',
-      isDefault: true,
-    },
-    {
-      id: `upi_${targetId.slice(-4)}`,
-      _id: `upi_${targetId.slice(-4)}`,
-      userId: targetId,
-      userModel: 'Rider',
-      type: 'UPI',
-      provider: 'Google Pay / Paytm',
-      last4: '4265',
-      isDefault: false,
-    },
-  ];
-
-  // Fetch authoritative wallet balance and ledger transactions
-  const authWallet = await getAuthoritativeWallet(targetId, 'rider');
-  const ledger = await getPaginatedTransactions(targetId, 'rider', { page: 1, limit: 20 });
+  const [authWallet, ledger, linkedMethods] = await Promise.all([
+    getAuthoritativeWallet(targetId, 'rider'),
+    getPaginatedTransactions(targetId, 'rider', { page: 1, limit: 20 }),
+    prisma.paymentMethod.findMany({
+      where: { userId: targetId, userModel: 'Rider' },
+      orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+    }),
+  ]);
 
   const formattedTransactions = ledger.items.map((tx: any) => ({
     id: tx.id,
@@ -323,8 +338,8 @@ export const getRiderWallet = asyncHandler(async (req: AuthenticatedRequest, res
     balance: Number(authWallet.balance),
     lockedBalance: Number(authWallet.lockedBalance),
     availableBalance: Number(authWallet.availableBalance),
-    totalEarnings: Number(rider.totalEarnings ?? authWallet.balance ?? 0),
-    linkedAccounts: defaultAccounts,
+    totalEarnings: Number(rider.totalEarnings ?? 0),
+    linkedAccounts: linkedMethods.map((m) => ({ ...m, _id: m.id })),
     transactions: formattedTransactions,
   }, 'Wallet details fetched'));
 });
@@ -411,24 +426,28 @@ export const linkPaymentAccount = asyncHandler(async (req: AuthenticatedRequest,
   const { provider, type = 'Bank Account', last4, accountNumber, ifscOrRouting } = req.body;
   if (!provider) throw new ApiError(400, 'Bank or provider name is required');
 
-  const newMethod = {
-    id: generateId(),
-    _id: generateId(),
-    userId: rider.id,
-    userModel: 'Rider',
-    type,
-    provider,
-    last4: last4 || (accountNumber ? String(accountNumber).slice(-4) : '0000'),
-    accountNumber: accountNumber ? String(accountNumber) : null,
-    ifscOrRouting: ifscOrRouting ? String(ifscOrRouting) : null,
-    isDefault: false,
-    createdAt: new Date(),
-  };
+  const existingCount = await prisma.paymentMethod.count({
+    where: { userId: rider.id, userModel: 'Rider' },
+  });
 
-  res.status(201).json(new ApiResponse(201, newMethod, 'Account linked successfully'));
+  const created = await prisma.paymentMethod.create({
+    data: {
+      id: generateId(),
+      userId: rider.id,
+      userModel: 'Rider',
+      type,
+      provider: String(provider).trim(),
+      last4: last4 ? String(last4).slice(-4) : (accountNumber ? String(accountNumber).slice(-4) : null),
+      accountNumber: accountNumber ? String(accountNumber) : null,
+      ifscOrRouting: ifscOrRouting ? String(ifscOrRouting) : null,
+      isDefault: existingCount === 0,
+    },
+  });
+
+  res.status(201).json(new ApiResponse(201, { ...created, _id: created.id }, 'Account linked successfully'));
 });
 
-// --- EARNINGS & INCENTIVES & OFFERS ---
+// --- EARNINGS & INCENTIVES & OFFERS & PERFORMANCE ---
 
 export const getRiderEarnings = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const riderId = req.user?.id || req.user?._id;
@@ -438,34 +457,60 @@ export const getRiderEarnings = asyncHandler(async (req: AuthenticatedRequest, r
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
+  const weekStart = new Date(today);
+  weekStart.setDate(weekStart.getDate() - 6);
 
-  const completedRides = await prisma.ride.findMany({
-    where: { riderId: targetId, status: 'completed' },
-    orderBy: { createdAt: 'desc' },
-  });
+  const [completedRides, authWallet] = await Promise.all([
+    prisma.ride.findMany({
+      where: { riderId: targetId, status: 'completed' },
+      orderBy: { createdAt: 'desc' },
+    }),
+    getAuthoritativeWallet(targetId, 'rider').catch(() => null),
+  ]);
 
-  const todayRides = completedRides.filter((r) => new Date(r.createdAt) >= today);
-  const yesterdayRides = completedRides.filter(
-    (r) => new Date(r.createdAt) >= yesterday && new Date(r.createdAt) < today
-  );
+  const weeklyRides = completedRides.filter((r) => new Date(r.completedAt || r.createdAt) >= weekStart);
+  const totalWeeklyMins = weeklyRides.reduce((sum, r) => sum + Number(r.duration || 0), 0);
+  const onlineHours = `${Math.floor(totalWeeklyMins / 60)}h ${totalWeeklyMins % 60}m`;
 
-  const todayAmount = todayRides.reduce((s, r) => s + Number(r.fare || 0), 0) || 850;
-  const yesterdayAmount = yesterdayRides.reduce((s, r) => s + Number(r.fare || 0), 0) || 1200;
+  const dayBuckets: Array<{ id: string; day: string; amount: number; rides: number }> = [];
+  for (let offset = 0; offset < 7; offset += 1) {
+    const dayStart = new Date(today);
+    dayStart.setDate(dayStart.getDate() - offset);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
 
-  const historySummary = [
-    { id: '1', day: 'Today', amount: todayAmount, rides: todayRides.length || 6 },
-    { id: '2', day: 'Yesterday', amount: yesterdayAmount, rides: yesterdayRides.length || 10 },
-    { id: '3', day: 'Mon, 31 Aug', amount: 950, rides: 8 },
-  ];
+    const matching = completedRides.filter((r) => {
+      const ts = new Date(r.completedAt || r.createdAt).getTime();
+      return ts >= dayStart.getTime() && ts < dayEnd.getTime();
+    });
+
+    const label =
+      offset === 0
+        ? 'Today'
+        : offset === 1
+          ? 'Yesterday'
+          : dayStart.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+
+    if (offset < 2 || matching.length > 0) {
+      dayBuckets.push({
+        id: String(offset + 1),
+        day: label,
+        amount: matching.reduce((s, r) => s + Number(r.fare || 0), 0),
+        rides: matching.length,
+      });
+    }
+  }
+
+  const computedTotalEarnings = completedRides.reduce((s, r) => s + Number(r.fare || 0), 0);
+  const walletBalance = authWallet ? Number(authWallet.balance) : Number(rider.walletBalance ?? 0);
 
   res.status(200).json(new ApiResponse(200, {
-    totalBalance: Number(rider.walletBalance || 3450),
-    totalEarnings: Number(rider.totalEarnings || 3450),
-    weeklyTrips: completedRides.length || 24,
-    onlineHours: '32h',
-    historySummary,
+    totalBalance: walletBalance,
+    totalEarnings: Math.max(computedTotalEarnings, Number(rider.totalEarnings ?? 0)),
+    weeklyTrips: weeklyRides.length,
+    totalCompletedTrips: completedRides.length,
+    onlineHours,
+    historySummary: dayBuckets,
   }, 'Earnings fetched'));
 });
 
@@ -474,51 +519,40 @@ export const getRiderIncentives = asyncHandler(async (req: AuthenticatedRequest,
   const rider = await resolveRider(riderId);
   const targetId = rider.id;
 
-  let rewards = await prisma.reward.findMany({
-    where: { userId: targetId, userModel: 'Rider' },
-  });
-
-  if (rewards.length === 0) {
-    const defaultRewards = [
-      {
-        id: generateId(),
-        userId: targetId,
-        userModel: 'Rider',
-        type: 'bonus',
-        title: 'Weekend Bonanza',
-        description: 'Complete 15 rides this weekend and earn an extra ₹500 bonus.',
-        progress: 8,
-        target: 15,
-        rewardAmount: 500,
-        validUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      },
-      {
-        id: generateId(),
-        userId: targetId,
-        userModel: 'Rider',
-        type: 'incentive',
-        title: 'Top Rated Driver',
-        description: 'Maintain a 4.8+ rating for the month to unlock 0% commission week.',
-        progress: 4.9,
-        target: 4.8,
-        rewardAmount: 0,
-        validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      },
-    ];
-    for (const r of defaultRewards) {
-      await prisma.reward.create({ data: r });
-    }
-    rewards = await prisma.reward.findMany({
+  const [rewards, broadcasts] = await Promise.all([
+    prisma.reward.findMany({
       where: { userId: targetId, userModel: 'Rider' },
-    });
-  }
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.driverIncentiveBroadcast.findMany({
+      where: { status: 'active', expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+    }),
+  ]);
+
+  const points = rider.loyaltyPoints ?? 0;
+  const combinedIncentives = [
+    ...rewards.map((r) => ({ ...r, _id: r.id })),
+    ...broadcasts.map((b) => ({
+      _id: b.id,
+      id: b.id,
+      type: 'broadcast',
+      title: b.title,
+      description: b.message,
+      rewardAmount: Number(b.bonusAmount),
+      targetZone: b.targetZone,
+      validUntil: b.expiresAt,
+      progress: 0,
+      target: 0,
+    })),
+  ];
 
   res.status(200).json(new ApiResponse(200, {
-    loyaltyPoints: rider.loyaltyPoints || 350,
-    referralCode: rider.referralCode || 'ALEX2025',
-    progressPercentage: Math.min(100, Math.round(((rider.loyaltyPoints || 350) / 500) * 100)),
-    pointsNeeded: Math.max(0, 500 - (rider.loyaltyPoints || 350)),
-    incentives: rewards.map(r => ({ ...r, _id: r.id })),
+    loyaltyPoints: points,
+    referralCode: rider.referralCode || '',
+    progressPercentage: Math.min(100, Math.round((points / 500) * 100)),
+    pointsNeeded: Math.max(0, 500 - points),
+    incentives: combinedIncentives,
   }, 'Incentives fetched'));
 });
 
@@ -527,44 +561,156 @@ export const getRiderOffers = asyncHandler(async (req: AuthenticatedRequest, res
   const rider = await resolveRider(riderId);
   const targetId = rider.id;
 
-  let offers = await prisma.reward.findMany({
-    where: { userId: targetId, userModel: 'Rider' },
-  });
+  const [offers, broadcasts] = await Promise.all([
+    prisma.reward.findMany({
+      where: { userId: targetId, userModel: 'Rider' },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.driverIncentiveBroadcast.findMany({
+      where: { status: 'active', expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+    }),
+  ]);
 
-  if (offers.length === 0) {
-    const defaultOffers = [
-      {
-        _id: '1',
-        title: 'Weekend Bonanza',
-        description: 'Complete 15 rides this weekend and earn an extra ₹500 bonus.',
-        code: 'WEEKEND500',
-        progress: 8,
-        target: 15,
-        validUntil: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+  const formattedOffers = [
+    ...offers.map((o) => ({
+      ...o,
+      _id: o.id,
+      progress: Number(o.progress ?? 0),
+      target: Number(o.target ?? 0),
+      rewardAmount: Number(o.rewardAmount ?? 0),
+    })),
+    ...broadcasts.map((b) => ({
+      _id: b.id,
+      id: b.id,
+      title: b.title,
+      description: b.message,
+      rewardAmount: Number(b.bonusAmount),
+      validUntil: b.expiresAt,
+      progress: 0,
+      target: 0,
+    })),
+  ];
+
+  res.status(200).json(new ApiResponse(200, formattedOffers, 'Offers fetched successfully'));
+});
+
+export const getRiderPerformance = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const riderId = req.user?.id || req.user?._id;
+  const rider = await resolveRider(riderId);
+  const targetId = rider.id;
+
+  const now = new Date();
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  const weekStart = new Date(todayStart);
+  weekStart.setDate(weekStart.getDate() - 6);
+
+  const [allRides, safetyClaims] = await Promise.all([
+    prisma.ride.findMany({
+      where: { riderId: targetId },
+      select: {
+        id: true,
+        status: true,
+        cancelledBy: true,
+        fare: true,
+        createdAt: true,
+        completedAt: true,
       },
-      {
-        _id: '2',
-        title: 'Top Rated Driver',
-        description: 'Maintain a 4.8+ rating for the month to unlock 0% commission week.',
-        code: 'TOPSTAR',
-        progress: 4.9,
-        target: 4.8,
-        validUntil: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000),
-      },
-      {
-        _id: '3',
-        title: 'Fuel Cashback',
-        description: 'Get ₹100 instant cashback on your 20th ride of the week.',
-        code: 'FUEL100',
-        progress: 14,
-        target: 20,
-        validUntil: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
-      },
-    ];
-    return res.status(200).json(new ApiResponse(200, defaultOffers, 'Offers fetched successfully'));
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.claim.count({
+      where: { userId: targetId, userModel: 'Rider', type: 'safety' },
+    }),
+  ]);
+
+  const completedRides = allRides.filter((r) => r.status === 'completed');
+  const driverCancelled = allRides.filter((r) => r.status === 'cancelled' && r.cancelledBy === 'rider');
+  const decidedRides = completedRides.length + driverCancelled.length;
+
+  const completionRate = decidedRides > 0 ? Math.round((completedRides.length / decidedRides) * 100) : 0;
+  const acceptanceRate = allRides.length > 0 ? Math.round((completedRides.length / allRides.length) * 100) : 0;
+  const safetyCompliance = Math.max(0, 100 - safetyClaims * 5);
+
+  const weeklyActivity: Array<{ day: string; date: string; rides: number; earnings: number }> = [];
+  for (let offset = 6; offset >= 0; offset -= 1) {
+    const dStart = new Date(todayStart);
+    dStart.setDate(dStart.getDate() - offset);
+    const dEnd = new Date(dStart);
+    dEnd.setDate(dEnd.getDate() + 1);
+
+    const dayCompleted = completedRides.filter((r) => {
+      const ts = new Date(r.completedAt || r.createdAt).getTime();
+      return ts >= dStart.getTime() && ts < dEnd.getTime();
+    });
+
+    weeklyActivity.push({
+      day: dStart.toLocaleDateString('en-IN', { weekday: 'short' }),
+      date: dStart.toISOString().split('T')[0],
+      rides: dayCompleted.length,
+      earnings: dayCompleted.reduce((sum, r) => sum + Number(r.fare || 0), 0),
+    });
   }
 
-  res.status(200).json(new ApiResponse(200, offers.map(o => ({ ...o, _id: o.id })), 'Offers fetched successfully'));
+  const totalWeeklyRides = weeklyActivity.reduce((s, d) => s + d.rides, 0);
+  const totalWeeklyEarnings = weeklyActivity.reduce((s, d) => s + d.earnings, 0);
+  const ratingVal = Number(rider.rating ?? 0);
+
+  const badges = [
+    {
+      id: 'first-trip',
+      name: 'First Mile Completed',
+      desc: 'Complete your first ride on DriveMate',
+      unlocked: completedRides.length >= 1,
+      current: completedRides.length,
+      target: 1,
+      color: '#10b981',
+      icon: 'ribbon',
+    },
+    {
+      id: 'ten-trips',
+      name: 'Reliable Partner',
+      desc: 'Complete 10 rides with DriveMate',
+      unlocked: completedRides.length >= 10,
+      current: completedRides.length,
+      target: 10,
+      color: '#f59e0b',
+      icon: 'trophy',
+    },
+    {
+      id: 'top-rated',
+      name: 'Top Rated Driver',
+      desc: 'Maintain 4.8+ average rating with at least 5 trips',
+      unlocked: completedRides.length >= 5 && ratingVal >= 4.8,
+      current: ratingVal,
+      target: 4.8,
+      color: '#3b82f6',
+      icon: 'star',
+    },
+    {
+      id: 'safety-champion',
+      name: 'Zero Incident Record',
+      desc: '100% safety compliance across trips',
+      unlocked: completedRides.length >= 1 && safetyClaims === 0,
+      current: safetyCompliance,
+      target: 100,
+      color: '#f72585',
+      icon: 'shield-checkmark',
+    },
+  ];
+
+  res.status(200).json(new ApiResponse(200, {
+    rating: ratingVal,
+    totalCompletedRides: completedRides.length,
+    driverCancelledRides: driverCancelled.length,
+    completionRate,
+    acceptanceRate,
+    safetyCompliance,
+    totalWeeklyRides,
+    totalWeeklyEarnings,
+    weeklyActivity,
+    badges,
+  }, 'Performance analytics fetched'));
 });
 
 // --- NOTIFICATIONS ---
@@ -574,55 +720,12 @@ export const getRiderNotifications = asyncHandler(async (req: AuthenticatedReque
   const rider = await resolveRider(riderId);
   const targetId = rider.id;
 
-  let notifs = await prisma.notification.findMany({
+  const notifs = await prisma.notification.findMany({
     where: { userId: targetId, userModel: 'Rider' },
     orderBy: { createdAt: 'desc' },
   });
 
-  if (notifs.length === 0) {
-    const seedNotifs = [
-      {
-        id: generateId(),
-        userId: targetId,
-        userModel: 'Rider',
-        title: 'Welcome to DriveMate',
-        body: 'Your partner account is active. Turn on duty to start receiving ride requests!',
-        type: 'system',
-        isRead: false,
-      },
-      {
-        id: generateId(),
-        userId: targetId,
-        userModel: 'Rider',
-        title: 'Weekend Bonus Active',
-        body: 'Earn an extra ₹500 by completing 15 rides this weekend.',
-        type: 'bonus',
-        isRead: false,
-      },
-      {
-        id: generateId(),
-        userId: targetId,
-        userModel: 'Rider',
-        title: 'Ride Completed',
-        body: 'You completed trip #8942 and earned ₹500.',
-        type: 'ride',
-        isRead: true,
-      },
-    ];
-    for (const n of seedNotifs) {
-      try {
-        await prisma.notification.create({ data: n });
-      } catch (err: any) {
-        console.warn('[RiderController] Note creating initial notification:', err.message);
-      }
-    }
-    notifs = await prisma.notification.findMany({
-      where: { userId: targetId, userModel: 'Rider' },
-      orderBy: { createdAt: 'desc' },
-    });
-  }
-
-  res.status(200).json(new ApiResponse(200, notifs.map(n => ({ ...n, _id: n.id })), 'Notifications fetched'));
+  res.status(200).json(new ApiResponse(200, notifs.map((n) => ({ ...n, _id: n.id })), 'Notifications fetched'));
 });
 
 export const markRiderNotificationsRead = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {

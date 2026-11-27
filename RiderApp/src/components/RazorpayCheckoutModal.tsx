@@ -11,6 +11,7 @@ import {
   Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { BASE_URL } from '../services/api';
 
 const NativeWebView: any =
   Platform.OS !== 'web' ? require('react-native-webview').WebView : null;
@@ -50,6 +51,12 @@ declare global {
   }
 }
 
+const sanitizeContact = (contact?: string): string => {
+  const digits = String(contact || '').replace(/[^\d]/g, '');
+  if (digits.length >= 10) return digits.slice(-10);
+  return '9876543210';
+};
+
 export default function RazorpayCheckoutModal({
   visible,
   order,
@@ -60,13 +67,13 @@ export default function RazorpayCheckoutModal({
 }: RazorpayCheckoutModalProps) {
   const [loading, setLoading] = useState(true);
   const [gatewayError, setGatewayError] = useState<string | null>(null);
-  const webHandledRef = useRef(false);
+  const settledRef = useRef(false);
 
   useEffect(() => {
     if (visible) {
       setLoading(true);
       setGatewayError(null);
-      webHandledRef.current = false;
+      settledRef.current = false;
     }
   }, [visible, order?.orderId]);
 
@@ -77,6 +84,10 @@ export default function RazorpayCheckoutModal({
 
     const launchWebRazorpay = async () => {
       try {
+        if (!order.keyId) {
+          throw new Error('Razorpay Key ID is missing. Check environment configuration.');
+        }
+
         if (!window.Razorpay) {
           await new Promise<void>((resolve, reject) => {
             const existingScript = document.querySelector(
@@ -110,7 +121,7 @@ export default function RazorpayCheckoutModal({
 
         const options = {
           key: order.keyId,
-          amount: order.amountPaise,
+          amount: Math.round(Number(order.amountPaise || Number(order.amount) * 100)),
           currency: order.currency || 'INR',
           name: 'DriveMate Partner',
           description: order.description || 'Driver Wallet Top-Up',
@@ -119,12 +130,12 @@ export default function RazorpayCheckoutModal({
           prefill: {
             name: order.prefill?.name || 'DriveMate Partner',
             email: order.prefill?.email || 'driver@drivemate.com',
-            contact: order.prefill?.contact || '9876543210',
+            contact: sanitizeContact(order.prefill?.contact),
           },
           theme: { color: '#f72585' },
           handler: (response: RazorpaySuccessPayload) => {
-            if (webHandledRef.current) return;
-            webHandledRef.current = true;
+            if (settledRef.current) return;
+            settledRef.current = true;
             onSuccess({
               razorpay_order_id: response.razorpay_order_id || order.orderId,
               razorpay_payment_id: response.razorpay_payment_id,
@@ -133,7 +144,8 @@ export default function RazorpayCheckoutModal({
           },
           modal: {
             ondismiss: () => {
-              if (!webHandledRef.current) {
+              if (!settledRef.current) {
+                settledRef.current = true;
                 onCancel('Payment checkout was closed before completion.');
               }
             },
@@ -142,8 +154,8 @@ export default function RazorpayCheckoutModal({
 
         const rzp = new window.Razorpay(options);
         rzp.on('payment.failed', (resp: any) => {
-          if (webHandledRef.current) return;
-          webHandledRef.current = true;
+          if (settledRef.current) return;
+          settledRef.current = true;
           onError(
             resp?.error?.description ||
               resp?.error?.reason ||
@@ -203,6 +215,10 @@ export default function RazorpayCheckoutModal({
     );
   }
 
+  const amountPaiseInt = Math.round(Number(order.amountPaise || Number(order.amount) * 100));
+  const cleanContact = sanitizeContact(order.prefill?.contact);
+  const callbackUrl = `${BASE_URL}/api/wallet/topup/callback`;
+
   const razorpayHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -225,7 +241,7 @@ export default function RazorpayCheckoutModal({
       font-size: 11px; padding: 6px 12px; border-radius: 20px; margin-bottom: 14px;
     }
     .amount { font-size: 32px; font-weight: 900; color: #1a1a2e; margin: 6px 0; }
-    .sub { font-size: 13px; color: #64748b; margin-bottom: 20px; }
+    .sub { font-size: 13px; color: #64748b; margin-bottom: 18px; }
     .spinner {
       width: 34px; height: 34px; border: 3px solid #f1f5f9; border-top-color: #f72585;
       border-radius: 50%; animation: spin 0.8s linear infinite; margin: 14px auto;
@@ -233,11 +249,10 @@ export default function RazorpayCheckoutModal({
     @keyframes spin { to { transform: rotate(360deg); } }
     .btn {
       width: 100%; background: #f72585; color: #fff; border: none; border-radius: 12px;
-      padding: 14px; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 12px;
+      padding: 14px; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 14px;
     }
-    .err { color: #e11d48; font-size: 13px; margin-top: 10px; display: none; }
+    .err { color: #e11d48; font-size: 13px; margin-top: 10px; display: none; word-break: break-word; }
   </style>
-  <script src="https://checkout.razorpay.com/v1/checkout.js" onerror="handleScriptError()"></script>
 </head>
 <body>
   <div class="card">
@@ -245,42 +260,63 @@ export default function RazorpayCheckoutModal({
     <div class="amount">₹${Number(order.amount).toFixed(2)}</div>
     <div class="sub">${(order.description || 'Driver Wallet Top-Up').replace(/</g, '&lt;')}</div>
     <div class="spinner" id="loader"></div>
-    <div id="statusText" style="font-size:13px;color:#475569;">Launching Razorpay Checkout...</div>
+    <div id="statusText" style="font-size:13px;color:#475569;">Connecting to Razorpay Checkout...</div>
     <div class="err" id="errorBox"></div>
-    <button class="btn" id="reopenBtn" style="display:none;" onclick="openCheckout()">Pay Now with Razorpay</button>
+    <button class="btn" id="reopenBtn" onclick="launchCheckout(true)">Pay with Razorpay</button>
   </div>
 
   <script>
+    var hasOpenedOnce = false;
+    var settled = false;
+
     function postMsg(obj) {
-      if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
-        window.ReactNativeWebView.postMessage(JSON.stringify(obj));
+      try {
+        if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+          window.ReactNativeWebView.postMessage(JSON.stringify(obj));
+        }
+      } catch (e) {}
+    }
+
+    window.onerror = function(msg) {
+      showError('Checkout error: ' + msg);
+      postMsg({ event: 'SCRIPT_ERROR', message: String(msg) });
+    };
+
+    function showError(text) {
+      var loader = document.getElementById('loader');
+      var status = document.getElementById('statusText');
+      var errEl = document.getElementById('errorBox');
+      if (loader) loader.style.display = 'none';
+      if (status) status.style.display = 'none';
+      if (errEl) {
+        errEl.style.display = 'block';
+        errEl.innerText = text;
       }
     }
 
     function handleScriptError() {
-      document.getElementById('loader').style.display = 'none';
-      document.getElementById('statusText').style.display = 'none';
-      var errEl = document.getElementById('errorBox');
-      errEl.style.display = 'block';
-      errEl.innerText = 'Could not load Razorpay Checkout script. Check internet connectivity.';
+      showError('Could not load Razorpay Checkout script. Check internet connectivity.');
       postMsg({ event: 'SCRIPT_ERROR', message: 'Failed to load Razorpay Checkout JS' });
     }
 
     var options = {
       key: ${JSON.stringify(order.keyId)},
-      amount: ${JSON.stringify(order.amountPaise)},
+      amount: ${JSON.stringify(amountPaiseInt)},
       currency: ${JSON.stringify(order.currency || 'INR')},
       name: 'DriveMate Partner',
       description: ${JSON.stringify(order.description || 'Driver Wallet Top-Up')},
       image: 'https://cdn-icons-png.flaticon.com/512/3258/3258446.png',
       order_id: ${JSON.stringify(order.orderId)},
+      callback_url: ${JSON.stringify(callbackUrl)},
       prefill: {
         name: ${JSON.stringify(order.prefill?.name || 'DriveMate Partner')},
         email: ${JSON.stringify(order.prefill?.email || 'driver@drivemate.com')},
-        contact: ${JSON.stringify(order.prefill?.contact || '9876543210')}
+        contact: ${JSON.stringify(cleanContact)}
       },
       theme: { color: '#f72585' },
       handler: function(response) {
+        if (settled) return;
+        settled = true;
         postMsg({
           event: 'PAYMENT_SUCCESS',
           payload: {
@@ -292,48 +328,69 @@ export default function RazorpayCheckoutModal({
       },
       modal: {
         ondismiss: function() {
+          if (settled) return;
+          settled = true;
           postMsg({ event: 'PAYMENT_CANCELLED' });
         }
       }
     };
 
-    function openCheckout() {
-      if (typeof Razorpay === 'undefined') {
-        handleScriptError();
+    function launchCheckout(force) {
+      if (!force && hasOpenedOnce) return;
+      if (!options.key) {
+        showError('Razorpay Key ID is missing.');
+        postMsg({ event: 'SCRIPT_ERROR', message: 'Razorpay Key ID is missing' });
         return;
       }
+      if (typeof Razorpay === 'undefined') {
+        if (force) {
+          handleScriptError();
+        }
+        return;
+      }
+      hasOpenedOnce = true;
       try {
         var rzp = new Razorpay(options);
         rzp.on('payment.failed', function(resp) {
+          if (settled) return;
+          settled = true;
           postMsg({
             event: 'PAYMENT_FAILED',
             message: (resp && resp.error && (resp.error.description || resp.error.reason)) || 'Payment failed'
           });
         });
-        document.getElementById('loader').style.display = 'none';
-        document.getElementById('statusText').innerText = 'Checkout Ready';
-        document.getElementById('reopenBtn').style.display = 'block';
+        var loader = document.getElementById('loader');
+        var status = document.getElementById('statusText');
+        if (loader) loader.style.display = 'none';
+        if (status) status.innerText = 'Razorpay Checkout Ready';
         rzp.open();
       } catch (e) {
+        showError(e.message || 'Checkout init error');
         postMsg({ event: 'PAYMENT_FAILED', message: e.message || 'Checkout init error' });
       }
     }
-
+  </script>
+  <script src="https://checkout.razorpay.com/v1/checkout.js" onload="launchCheckout(false)" onerror="handleScriptError()"></script>
+  <script>
     window.addEventListener('load', function() {
-      setTimeout(openCheckout, 250);
+      setTimeout(function() { launchCheckout(false); }, 350);
     });
   </script>
 </body>
 </html>`;
 
   const handleWebViewMessage = (event: any) => {
+    if (settledRef.current) return;
     try {
       const msg = JSON.parse(event.nativeEvent.data);
       if (msg.event === 'PAYMENT_SUCCESS' && msg.payload) {
+        settledRef.current = true;
         onSuccess(msg.payload);
       } else if (msg.event === 'PAYMENT_CANCELLED') {
+        settledRef.current = true;
         onCancel('Payment checkout was cancelled.');
       } else if (msg.event === 'PAYMENT_FAILED') {
+        settledRef.current = true;
         onError(msg.message || 'Payment failed on Razorpay.');
       } else if (msg.event === 'SCRIPT_ERROR') {
         setGatewayError(msg.message || 'Unable to connect to Razorpay gateway.');
@@ -356,13 +413,26 @@ export default function RazorpayCheckoutModal({
 
         {NativeWebView ? (
           <NativeWebView
-            source={{ html: razorpayHtml, baseUrl: 'https://checkout.razorpay.com' }}
+            source={{ html: razorpayHtml, baseUrl: 'https://drivemate.in' }}
             originWhitelist={['*']}
             javaScriptEnabled
             domStorageEnabled
+            javaScriptCanOpenWindowsAutomatically
+            setSupportMultipleWindows={false}
             thirdPartyCookiesEnabled
+            sharedCookiesEnabled
+            allowsInlineMediaPlayback
             mixedContentMode="always"
+            startInLoadingState
             onLoadEnd={() => setLoading(false)}
+            onError={(e: any) =>
+              setGatewayError(e?.nativeEvent?.description || 'Failed to load payment view')
+            }
+            onHttpError={(e: any) => {
+              if (e?.nativeEvent?.statusCode >= 500) {
+                setGatewayError(`Gateway HTTP error ${e.nativeEvent.statusCode}`);
+              }
+            }}
             onMessage={handleWebViewMessage}
             onShouldStartLoadWithRequest={(req: any) => {
               const url = req.url || '';

@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { riderService } from '../../services/riderService';
 import { RiderNotification } from '../../services/types';
 import { useToast } from '../../context/ToastContext';
+import { extractApiErrorMessage, socket } from '../../services/api';
 
 type FilterTab = 'all' | 'ride' | 'payout' | 'system';
 
@@ -21,14 +22,16 @@ export default function NotificationsScreen({ navigation }: any) {
   const [notifications, setNotifications] = useState<RiderNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
 
   const fetchNotifs = useCallback(async () => {
     try {
+      setError(null);
       const data = await riderService.getNotifications();
-      setNotifications(data);
-    } catch (err) {
-      console.log('Failed to fetch notifications:', err);
+      setNotifications(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      setError(extractApiErrorMessage(err, 'Unable to load notifications.'));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -37,6 +40,13 @@ export default function NotificationsScreen({ navigation }: any) {
 
   useEffect(() => {
     fetchNotifs();
+    const handleIncoming = () => fetchNotifs();
+    socket.on('notification', handleIncoming);
+    socket.on('incentive_broadcast', handleIncoming);
+    return () => {
+      socket.off('notification', handleIncoming);
+      socket.off('incentive_broadcast', handleIncoming);
+    };
   }, [fetchNotifs]);
 
   const handleMarkAllRead = async () => {
@@ -177,8 +187,23 @@ export default function NotificationsScreen({ navigation }: any) {
         })}
       </View>
 
-      {loading ? (
+      {loading && !refreshing ? (
         <ActivityIndicator size="large" color="#f72585" style={{ marginTop: 40 }} />
+      ) : error ? (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="cloud-offline-outline" size={48} color="#ef4444" />
+          <Text style={styles.emptyTitle}>Connection Error</Text>
+          <Text style={styles.emptyText}>{error}</Text>
+          <TouchableOpacity
+            onPress={() => {
+              setLoading(true);
+              fetchNotifs();
+            }}
+            style={{ marginTop: 14, backgroundColor: '#f72585', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '700' }}>Retry</Text>
+          </TouchableOpacity>
+        </View>
       ) : (
         <FlatList
           data={filteredNotifications}

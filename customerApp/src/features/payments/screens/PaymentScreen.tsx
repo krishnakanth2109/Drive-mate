@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,26 +8,43 @@ import {
   SafeAreaView,
   Alert,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { api } from '../../../services/api';
+import { paymentService } from '../services/paymentService';
+import { profileService } from '../../profile/services/profileService';
+import { extractApiErrorMessage } from '../../../services/api';
 
 export default function PaymentScreen() {
   const navigation = useNavigation<any>();
   const [selectedMethod, setSelectedMethod] = useState('wallet');
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [savedMethods, setSavedMethods] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadPaymentData = useCallback(async () => {
+    try {
+      setError(null);
+      const [walletData, methodsData] = await Promise.all([
+        paymentService.getWallet(),
+        profileService.getPaymentMethods().catch(() => []),
+      ]);
+      if (walletData?.balance !== undefined) {
+        setWalletBalance(Number(walletData.balance));
+      }
+      setSavedMethods(Array.isArray(methodsData) ? methodsData : []);
+    } catch (err: any) {
+      setError(extractApiErrorMessage(err, 'Unable to load payment details.'));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    api.get('/wallet')
-      .then((res) => {
-        const data = res.data?.data !== undefined ? res.data.data : res.data;
-        if (data?.balance !== undefined) {
-          setWalletBalance(Number(data.balance));
-        }
-      })
-      .catch(() => {});
-  }, []);
+    loadPaymentData();
+  }, [loadPaymentData]);
 
   const paymentMethods = [
     {
@@ -82,7 +99,19 @@ export default function PaymentScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.sectionHeader}>Saved Payment Options</Text>
+        {loading ? (
+          <ActivityIndicator size="large" color="#f72585" style={{ marginVertical: 24 }} />
+        ) : error ? (
+          <View style={{ padding: 16, backgroundColor: '#fef2f2', borderRadius: 12, marginBottom: 16 }}>
+            <Text style={{ color: '#b91c1c', marginBottom: 8 }}>{error}</Text>
+            <TouchableOpacity onPress={loadPaymentData}>
+              <Text style={{ color: '#f72585', fontWeight: '700' }}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+        <Text style={styles.sectionHeader}>
+          Saved Payment Options {savedMethods.length > 0 ? `(${savedMethods.length})` : ''}
+        </Text>
 
         <View style={styles.methodsList}>
           {paymentMethods.map((method) => {

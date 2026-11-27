@@ -35,13 +35,6 @@ const CITIES = [
   'Chennai',
 ];
 
-const TRENDING_ROUTES = [
-  { from: 'HSR Layout Sector 2', to: 'Manyata Tech Park', city: 'Bangalore', bikers: 48 },
-  { from: 'Gachibowli Cyber Towers', to: 'Hitech City Phase 2', city: 'Hyderabad', bikers: 42 },
-  { from: 'BKC Corporate Complex', to: 'Powai Tech Hub', city: 'Mumbai', bikers: 35 },
-  { from: 'Noida Sector 62', to: 'Gurugram Cyber City', city: 'Delhi-NCR', bikers: 28 },
-];
-
 export function DashboardOverview({ 
   userProfile, 
   posts = [], 
@@ -54,11 +47,30 @@ export function DashboardOverview({
   const [selectedHub, setSelectedHub] = useState('All Cities');
   const [requestedRides, setRequestedRides] = useState({});
 
-  const handleRequestPillion = (rideId) => {
+  const trendingRoutes = React.useMemo(() => {
+    const counts = new Map();
+    for (const p of posts) {
+      if (!p?.fromLocation || !p?.toLocation) continue;
+      const key = `${p.city || 'Other'}||${p.fromLocation}||${p.toLocation}`;
+      const cur = counts.get(key) || {
+        from: p.fromLocation,
+        to: p.toLocation,
+        city: p.city || 'City',
+        bikers: 0,
+      };
+      cur.bikers += 1;
+      counts.set(key, cur);
+    }
+    return Array.from(counts.values())
+      .sort((a, b) => b.bikers - a.bikers)
+      .slice(0, 4);
+  }, [posts]);
+
+  const handleRequestPillion = (rideId, postObj) => {
     setRequestedRides((prev) => ({ ...prev, [rideId]: true }));
-    setTimeout(() => {
-      setRequestedRides((prev) => ({ ...prev, [rideId]: false }));
-    }, 4000);
+    if (onOpenChat && postObj) {
+      onOpenChat(postObj);
+    }
   };
 
   const filteredPosts = posts.filter((p) => {
@@ -98,16 +110,16 @@ export function DashboardOverview({
             <div className="space-y-1">
               <div className="flex items-center gap-1.5">
                 <h3 className={`font-black text-base ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  {userProfile?.name || 'Alex Carter'}
+                  {userProfile?.name || 'Commuter'}
                 </h3>
                 <ShieldCheck className="w-4 h-4 text-[#38c6ec]" />
               </div>
               <p className="text-xs text-slate-400 font-medium line-clamp-1">
-                {userProfile?.profession || 'Lead Cloud Architect'}
+                {userProfile?.profession || 'Community Member'}
               </p>
               <p className="text-[11px] text-slate-500 flex items-center gap-1">
                 <Building2 className="w-3 h-3 text-slate-400 shrink-0" />
-                <span className="truncate">{userProfile?.company || 'Tech Mahindra / Whitefield'}</span>
+                <span className="truncate">{userProfile?.company || 'DriveMate Network'}</span>
               </p>
             </div>
 
@@ -117,26 +129,26 @@ export function DashboardOverview({
             }`}>
               <span className={`text-[11px] font-semibold flex items-center gap-1.5 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                 <MapPin className="w-3.5 h-3.5 text-[#38c6ec]" />
-                {userProfile?.city || 'Bangalore'} Hub
+                {userProfile?.city || 'City Not Set'}
               </span>
               <span className="text-[10px] font-bold text-[#0284c7] dark:text-[#38c6ec] bg-[#38c6ec]/15 px-2 py-0.5 rounded-full border border-[#38c6ec]/30">
-                Verified Biker
+                {userProfile?.isEmailVerified ? 'Verified' : 'Member'}
               </span>
             </div>
 
-            {/* LinkedIn-style Commuter Metrics */}
+            {/* Commuter Metrics */}
             <div className={`mt-4 pt-3 border-t space-y-2 text-xs ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
               <div className="flex items-center justify-between text-slate-400">
-                <span>Trips Shared</span>
-                <strong className={isDark ? 'text-[#38c6ec]' : 'text-sky-600'}>128 Commutes</strong>
+                <span>Community Listings</span>
+                <strong className={isDark ? 'text-[#38c6ec]' : 'text-sky-600'}>{posts.length}</strong>
               </div>
               <div className="flex items-center justify-between text-slate-400">
                 <span>Colleague Connections</span>
-                <strong className={isDark ? 'text-white' : 'text-slate-900'}>{connectedUsers.length || 14} peers</strong>
+                <strong className={isDark ? 'text-white' : 'text-slate-900'}>{connectedUsers.length} peers</strong>
               </div>
               <div className="flex items-center justify-between text-slate-400">
-                <span>Community Trust Score</span>
-                <strong className="text-emerald-500 font-bold">4.9 / 5.0 ★</strong>
+                <span>Wallet Balance</span>
+                <strong className="text-emerald-500 font-bold">₹{Number(userProfile?.walletBalance ?? 0).toFixed(0)}</strong>
               </div>
             </div>
 
@@ -423,7 +435,7 @@ export function DashboardOverview({
 
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => handleRequestPillion(rideKey)}
+                        onClick={() => handleRequestPillion(rideKey, ride)}
                         disabled={isRequested}
                         className={`
                           px-4 py-2 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer
@@ -487,22 +499,26 @@ export function DashboardOverview({
           </div>
 
           <div className="space-y-2.5">
-            {TRENDING_ROUTES.map((route, i) => (
-              <div 
-                key={i}
-                className={`p-2.5 rounded-xl border transition-all text-xs ${
-                  isDark ? 'bg-white/5 border-white/5 hover:border-white/15' : 'bg-slate-50 border-slate-200 hover:border-slate-300'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] text-[#38c6ec] font-bold">{route.city}</span>
-                  <span className="text-[10px] text-emerald-500 font-semibold">{route.bikers} Bikers</span>
+            {trendingRoutes.length === 0 ? (
+              <p className="text-[11px] text-slate-400">No active commute routes posted yet.</p>
+            ) : (
+              trendingRoutes.map((route, i) => (
+                <div 
+                  key={i}
+                  className={`p-2.5 rounded-xl border transition-all text-xs ${
+                    isDark ? 'bg-white/5 border-white/5 hover:border-white/15' : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] text-[#38c6ec] font-bold">{route.city}</span>
+                    <span className="text-[10px] text-emerald-500 font-semibold">{route.bikers} Active</span>
+                  </div>
+                  <div className={`font-semibold line-clamp-1 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    {route.from} ➔ {route.to}
+                  </div>
                 </div>
-                <div className={`font-semibold line-clamp-1 ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  {route.from} ➔ {route.to}
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 

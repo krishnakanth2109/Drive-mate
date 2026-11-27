@@ -17,7 +17,7 @@ import {
   HeartHandshake
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import axios from 'axios';
+import { communityApi } from '../../api/communityApi';
 
 const CITIES = [
   'Bangalore',
@@ -81,20 +81,16 @@ export function PostRideView({ userProfile, onPostPublished, API_URL, theme = 'd
     setLoading(true);
     setError('');
 
-    const token = sessionStorage.getItem('dm_user_token');
-
     try {
-      const res = await axios.post(`${API_URL}/community/posts`, {
+      const created = await communityApi.createPost({
         ...formData,
-        fuelShareCost: 0, // Zero cost / free community carpool
-      }, {
-        headers: token ? { 'x-auth-token': token } : {},
+        fuelShareCost: 0,
       });
 
-      if (res.data?.data) {
+      if (created) {
         setSuccess(true);
         if (onPostPublished) {
-          onPostPublished(res.data.data);
+          onPostPublished(created);
         }
 
         setPostFormData((prev) => ({

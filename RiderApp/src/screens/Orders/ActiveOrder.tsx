@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Linking, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRider } from '../../context/RiderContext';
@@ -6,6 +6,8 @@ import { riderService } from '../../services/riderService';
 import { Ride } from '../../services/types';
 import RiderWebMapView from '../../components/RiderWebMapView';
 import DriverInRideSupportModal from '../../components/DriverInRideSupportModal';
+import GeofenceArrivalCard from '../../components/GeofenceArrivalCard';
+import { evaluateDriverGeofence } from '../../utils/geofence';
 
 // Decode encoded polyline helper
 const decodePolyline = (t: string): { latitude: number; longitude: number }[] => {
@@ -87,9 +89,18 @@ const DriverWaitTimer = ({ arrivedAt }: { arrivedAt?: string | null }) => {
 };
 
 export default function ActiveOrderScreen({ navigation }: any) {
-  const { activeRide, arriveAtPickup, location } = useRider();
+  const {
+    activeRide,
+    arriveAtPickup,
+    arriveAtDrop,
+    completeRide,
+    location,
+    driverGps,
+    isArrivalSubmitting,
+    refreshCurrentGps,
+  } = useRider();
   const [rideData, setRideData] = useState<Ride | null>(activeRide);
-  const [loading, setLoading] = useState(false);
+  const [completing, setCompleting] = useState(false);
   const [supportVisible, setSupportVisible] = useState(false);
 
   useEffect(() => {
@@ -129,19 +140,46 @@ export default function ActiveOrderScreen({ navigation }: any) {
     navigation.navigate('ChatScreen', { customerName, customerPhone });
   };
 
-  const handleArrive = async () => {
-    setLoading(true);
-    try {
-      const ok = await arriveAtPickup();
-      if (ok) {
-        Alert.alert('Arrived', 'Customer notified that you have arrived at pickup location!');
-      }
-    } catch (err: any) {
-      Alert.alert('Error', 'Failed to update arrival status');
-    } finally {
-      setLoading(false);
+  const handleArrivePickup = async () => {
+    const ok = await arriveAtPickup();
+    if (ok) {
+      Alert.alert('Arrived', 'Customer notified that you have arrived at pickup location!');
     }
   };
+
+  const handleArriveDrop = async () => {
+    const ok = await arriveAtDrop();
+    if (ok) {
+      Alert.alert('Destination Reached', 'Drop arrival confirmed! Collect fare and complete the trip.');
+    }
+  };
+
+  const handleCompleteTrip = async () => {
+    setCompleting(true);
+    try {
+      const ok = await completeRide();
+      if (ok) {
+        const rideId = rideData?._id || rideData?.id;
+        if (rideId) navigation.replace('OrderDetails', { rideId });
+        else navigation.replace('MainTabs');
+      }
+    } finally {
+      setCompleting(false);
+    }
+  };
+
+  const isGoingToPickup = !rideData?.status || rideData.status === 'accepted';
+  const isGoingToDrop = rideData?.status === 'ongoing';
+
+  const pickupEval = useMemo(
+    () => evaluateDriverGeofence(driverGps, pickupCoord, 'pickup'),
+    [driverGps, pickupCoord?.lat, pickupCoord?.lng]
+  );
+
+  const dropEval = useMemo(
+    () => evaluateDriverGeofence(driverGps, dropCoord, 'drop'),
+    [driverGps, dropCoord?.lat, dropCoord?.lng]
+  );
 
   return (
     <View style={styles.container}>
@@ -152,11 +190,19 @@ export default function ActiveOrderScreen({ navigation }: any) {
           pickupCoord={pickupCoord}
           dropCoord={dropCoord}
           routeCoords={routeCoords}
+          activeGeofenceTarget={isGoingToPickup ? 'pickup' : isGoingToDrop ? 'drop' : null}
+          isWithinGeofence={isGoingToPickup ? pickupEval.isWithinRadius : isGoingToDrop ? dropEval.isWithinRadius : false}
           style={StyleSheet.absoluteFill}
         />
         <TouchableOpacity
           style={styles.navBtn}
-          onPress={() => navigation.navigate(rideData?.status === 'ongoing' ? 'DropNavigation' : 'PickupNavigation')}
+          onPress={() =>
+            navigation.navigate(
+              rideData?.status === 'ongoing' || rideData?.status === 'drop_arrived'
+                ? 'DropNavigation'
+                : 'PickupNavigation'
+            )
+          }
           accessibilityLabel="Open turn-by-turn navigation"
         >
           <Ionicons name="navigate" size={24} color="#fff" />
@@ -188,6 +234,8 @@ export default function ActiveOrderScreen({ navigation }: any) {
             ? 'Waiting for Customer'
             : rideData?.status === 'ongoing'
             ? 'Heading to Destination'
+            : rideData?.status === 'drop_arrived'
+            ? 'Reached Drop Location'
             : 'Picking up Customer'}
         </Text>
         <Text style={styles.timeText}>
@@ -230,16 +278,42 @@ export default function ActiveOrderScreen({ navigation }: any) {
           </View>
         </View>
 
-        {rideData?.status !== 'arrived' && rideData?.status !== 'ongoing' ? (
-          <TouchableOpacity style={styles.primaryBtn} onPress={handleArrive} disabled={loading}>
-            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Arrived at Pickup</Text>}
-          </TouchableOpacity>
+        {isGoingToPickup ? (
+          <GeofenceArrivalCard
+            mode="pickup"
+            evaluation={pickupEval}
+            isSubmitting={isArrivalSubmitting}
+            onPressArrive={handleArrivePickup}
+            onRefreshGps={refreshCurrentGps}
+            variant="dark"
+          />
         ) : rideData?.status === 'arrived' ? (
           <TouchableOpacity
             style={[styles.primaryBtn, { backgroundColor: '#2ecc71' }]}
-            onPress={() => navigation.navigate('DashboardRoot')}
+            onPress={() => navigation.navigate('MainTabs')}
           >
             <Text style={styles.primaryBtnText}>Enter Customer OTP</Text>
+          </TouchableOpacity>
+        ) : rideData?.status === 'ongoing' ? (
+          <GeofenceArrivalCard
+            mode="drop"
+            evaluation={dropEval}
+            isSubmitting={isArrivalSubmitting}
+            onPressArrive={handleArriveDrop}
+            onRefreshGps={refreshCurrentGps}
+            variant="dark"
+          />
+        ) : rideData?.status === 'drop_arrived' ? (
+          <TouchableOpacity
+            style={[styles.primaryBtn, { backgroundColor: '#10b981' }]}
+            onPress={handleCompleteTrip}
+            disabled={completing}
+          >
+            {completing ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.primaryBtnText}>Complete Trip • ₹{rideData?.fare || 0}</Text>
+            )}
           </TouchableOpacity>
         ) : (
           <TouchableOpacity

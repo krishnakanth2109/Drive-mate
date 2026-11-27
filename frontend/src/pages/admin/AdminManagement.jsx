@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
 import { ShieldCheck, Plus, Trash2, Loader2 } from 'lucide-react';
+import { adminApi } from '../../api/adminApi';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 
@@ -16,21 +16,18 @@ export function AdminManagement() {
   const [createError, setCreateError] = useState('');
   
   const navigate = useNavigate();
-  const token = sessionStorage.getItem('vlt_master_token');
 
   useEffect(() => {
     const fetchAdmins = async () => {
       try {
-        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-        const config = { headers: { 'x-auth-token': token } };
-        const res = await axios.get(`${API_URL}/admin/list`, config);
-        setAdmins(res.data);
+        const list = await adminApi.getAdmins();
+        setAdmins(Array.isArray(list) ? list : []);
       } catch (err) {
-        if (err.response?.status === 401 || err.response?.status === 403) {
+        if (err.status === 401 || err.status === 403) {
           sessionStorage.removeItem('vlt_master_token');
           navigate('/master');
         } else {
-          setError('Failed to load admins');
+          setError(err.message || 'Failed to load admins');
         }
       } finally {
         setLoading(false);
@@ -38,7 +35,7 @@ export function AdminManagement() {
     };
 
     fetchAdmins();
-  }, [navigate, token]);
+  }, [navigate]);
 
   const handleCreateAdmin = async (e) => {
     e.preventDefault();
@@ -46,15 +43,12 @@ export function AdminManagement() {
     setCreateError('');
 
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-      const config = { headers: { 'x-auth-token': token } };
-      
-      const res = await axios.post(`${API_URL}/admin/create`, newAdmin, config);
-      setAdmins([res.data, ...admins]);
+      const created = await adminApi.createAdmin(newAdmin);
+      setAdmins([created, ...admins]);
       setIsModalOpen(false);
       setNewAdmin({ name: '', email: '', password: '', role: 'admin' });
     } catch (err) {
-      setCreateError(err.response?.data?.msg || 'Error creating admin');
+      setCreateError(err.message || 'Error creating admin');
     } finally {
       setCreateLoading(false);
     }

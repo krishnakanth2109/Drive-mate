@@ -28,21 +28,13 @@ import { DataTable, Column } from '../../../components/common/DataTable';
 import { StatusBadge } from '../../../components/common/StatusBadge';
 import { CityFilter } from '../../../components/common/CityFilter';
 import { Modal } from '../../../components/common/Modal';
-import { fetchApi } from '../../../api/client';
+import { fetchApi, resolveAssetUrl } from '../../../api/client';
+import { adminApi } from '../../../api/adminApi';
 
 /**
  * Resolves static document URLs safely whether hosted on Cloudinary or served from backend /uploads
  */
-export const resolveImageUrl = (path?: string | null): string => {
-  if (!path) return '';
-  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:image/')) {
-    return path;
-  }
-  const backendUrl = import.meta.env.VITE_API_URL 
-    ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, '') 
-    : 'http://localhost:5000';
-  return `${backendUrl}${path.startsWith('/') ? path : `/${path}`}`;
-};
+export const resolveImageUrl = (path?: string | null): string => resolveAssetUrl(path);
 
 export function RidersVerificationView() {
   const [searchParams, setSearchParams] = useSearchParams();

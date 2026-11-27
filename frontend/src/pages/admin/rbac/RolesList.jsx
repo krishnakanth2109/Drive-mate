@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import { adminApi } from '../../../api/adminApi';
 import { 
   Plus, 
   Edit, 
@@ -89,15 +89,10 @@ export function RolesList() {
   const navigate = useNavigate();
   const { permissions } = usePermissions();
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-
   const fetchRoles = async () => {
     try {
-      const token = sessionStorage.getItem('vlt_master_token');
-      const res = await axios.get(`${API_URL}/rbac/roles`, {
-        headers: { 'x-auth-token': token }
-      });
-      setRoles(res.data.data || []);
+      const list = await adminApi.getRoles();
+      setRoles(Array.isArray(list) ? list : []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -140,25 +135,18 @@ export function RolesList() {
     if (!editingRole) return;
     setSaving(true);
     try {
-      const token = sessionStorage.getItem('vlt_master_token');
       const roleId = editingRole._id || editingRole.id;
-      await axios.put(
-        `${API_URL}/rbac/roles/${roleId}`,
-        {
-          name: modalName,
-          description: modalDesc,
-          status: modalStatus,
-          permissions: modalPermissions,
-        },
-        {
-          headers: { 'x-auth-token': token },
-        }
-      );
+      await adminApi.updateRole(roleId, {
+        name: modalName,
+        description: modalDesc,
+        status: modalStatus,
+        permissions: modalPermissions,
+      });
       closeEditModal();
       fetchRoles();
       alert('Role and permissions updated successfully!');
     } catch (err) {
-      alert(err.response?.data?.message || 'Error updating role');
+      alert(err.message || 'Error updating role');
     } finally {
       setSaving(false);
     }
@@ -170,13 +158,10 @@ export function RolesList() {
 
     if (window.confirm('Are you sure you want to delete this role?')) {
       try {
-        const token = sessionStorage.getItem('vlt_master_token');
-        await axios.delete(`${API_URL}/rbac/roles/${id}`, {
-          headers: { 'x-auth-token': token },
-        });
+        await adminApi.deleteRole(id);
         fetchRoles();
       } catch (err) {
-        alert(err.response?.data?.message || 'Error deleting role');
+        alert(err.message || 'Error deleting role');
       }
     }
   };

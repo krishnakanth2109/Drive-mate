@@ -11,16 +11,22 @@ export default function ProfileScreen({ navigation }: any) {
   const [profile, setProfile] = useState<RiderProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchProfile = useCallback(async () => {
     try {
+      setError(null);
       const data = await riderService.getProfile();
       setProfile(data);
       await AsyncStorage.setItem('rider', JSON.stringify(data));
-    } catch (err) {
+    } catch (err: any) {
       console.log('Failed to fetch profile from server, trying cache:', err);
       const cached = await AsyncStorage.getItem('rider');
-      if (cached) setProfile(JSON.parse(cached));
+      if (cached) {
+        setProfile(JSON.parse(cached));
+      } else {
+        setError(err?.response?.data?.message || 'Unable to load driver profile.');
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -54,22 +60,33 @@ export default function ProfileScreen({ navigation }: any) {
         <View style={styles.avatar}>
           <Ionicons name="person" size={40} color="#fff" />
         </View>
-        <Text style={styles.name}>{profile?.name || 'Driver Name'}</Text>
-        <Text style={styles.phone}>{profile?.phone || 'Loading...'}</Text>
+        <Text style={styles.name}>{loading && !profile ? 'Loading...' : profile?.name || 'Driver Account'}</Text>
+        <Text style={styles.phone}>{profile?.phone || profile?.email || 'No phone on file'}</Text>
         <View style={styles.ratingBadge}>
-          <Text style={styles.ratingText}>{profile?.rating ? `${profile.rating} ⭐` : '4.9 ⭐'}</Text>
+          <Text style={styles.ratingText}>
+            {profile?.rating !== undefined ? `${Number(profile.rating).toFixed(1)} ⭐` : '— ⭐'}
+          </Text>
         </View>
       </View>
+
+      {error ? (
+        <View style={{ margin: 16, padding: 14, backgroundColor: '#fef2f2', borderRadius: 12, alignItems: 'center' }}>
+          <Text style={{ color: '#b91c1c', marginBottom: 8 }}>{error}</Text>
+          <TouchableOpacity onPress={fetchProfile}>
+            <Text style={{ color: '#f72585', fontWeight: '700' }}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       <View style={styles.statsRow}>
         <View style={styles.statBox}>
           <Text style={styles.statLabel}>Total Rides</Text>
-          <Text style={styles.statValue}>{profile?.totalRides ?? 24}</Text>
+          <Text style={styles.statValue}>{profile?.totalRides ?? 0}</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statBox}>
           <Text style={styles.statLabel}>Today's Earnings</Text>
-          <Text style={styles.statValue}>₹{profile?.todayEarnings ?? 850}</Text>
+          <Text style={styles.statValue}>₹{profile?.todayEarnings ?? 0}</Text>
         </View>
       </View>
 

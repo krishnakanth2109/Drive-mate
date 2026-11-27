@@ -1,6 +1,58 @@
 import 'dotenv/config';
+import dns from 'dns';
+import { createRequire } from 'module';
+import { neonConfig } from '@neondatabase/serverless';
 import { PrismaClient } from '@prisma/client';
 import { PrismaNeon } from '@prisma/adapter-neon';
+
+const require = createRequire(import.meta.url);
+const WebSocket: any = require('ws');
+
+// Fallback public DNS resolver in case local ISP/router DNS refuses *.neon.tech queries
+const fallbackResolver = new dns.Resolver();
+fallbackResolver.setServers(['8.8.8.8', '1.1.1.1']);
+
+function resilientLookup(
+  hostname: string,
+  options: dns.LookupAllOptions | dns.LookupOneOptions | ((err: NodeJS.ErrnoException | null, address: any, family?: number) => void),
+  callback?: (err: NodeJS.ErrnoException | null, address: any, family?: number) => void
+) {
+  let opts: any = options;
+  let cb: any = callback;
+  if (typeof options === 'function') {
+    cb = options;
+    opts = {};
+  }
+
+  dns.lookup(hostname, opts, (err, address, family) => {
+    if (!err) {
+      return cb(null, address, family);
+    }
+    fallbackResolver.resolve4(hostname, (rErr, addresses) => {
+      if (rErr || !addresses || addresses.length === 0) {
+        return cb(err);
+      }
+      if (opts && opts.all) {
+        return cb(
+          null,
+          addresses.map((ip) => ({ address: ip, family: 4 }))
+        );
+      }
+      return cb(null, addresses[0], 4);
+    });
+  });
+}
+
+class ResilientNeonWebSocket extends WebSocket {
+  constructor(address: string, protocols?: any, options?: any) {
+    super(address, protocols, {
+      ...(options || {}),
+      lookup: resilientLookup,
+    });
+  }
+}
+
+neonConfig.webSocketConstructor = ResilientNeonWebSocket as any;
 
 const connectionString = process.env.DATABASE_URL || process.env.POSTGRESQL;
 
@@ -78,5 +130,3 @@ export const disconnectPrisma = async (): Promise<void> => {
     console.error('Error disconnecting Prisma:', err?.message || err);
   }
 };
-
-export default prisma;

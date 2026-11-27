@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,9 +7,14 @@ import {
   TouchableOpacity,
   SafeAreaView,
   Dimensions,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useToast } from '../../context/ToastContext';
+import { riderService } from '../../services/riderService';
+import { RiderPerformanceData } from '../../services/types';
+import { extractApiErrorMessage } from '../../services/api';
 
 const { width } = Dimensions.get('window');
 
@@ -67,43 +72,50 @@ const MetricCard: React.FC<MetricCardProps> = ({
 
 export default function PerformanceScreen({ navigation }: any) {
   const { showToast } = useToast();
-  const [selectedDay, setSelectedDay] = useState<string>('Fri');
+  const [perf, setPerf] = useState<RiderPerformanceData | null>(null);
+  const [selectedDay, setSelectedDay] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const weeklyData = [
-    { day: 'Mon', rides: 8, earnings: 1240, height: 48 },
-    { day: 'Tue', rides: 10, earnings: 1580, height: 60 },
-    { day: 'Wed', rides: 7, earnings: 1120, height: 42 },
-    { day: 'Thu', rides: 11, earnings: 1850, height: 70 },
-    { day: 'Fri', rides: 14, earnings: 2320, height: 90 },
-    { day: 'Sat', rides: 15, earnings: 2640, height: 100 },
-    { day: 'Sun', rides: 12, earnings: 1950, height: 76 },
-  ];
+  const loadPerformance = useCallback(async () => {
+    try {
+      setError(null);
+      const data = await riderService.getPerformance();
+      setPerf(data);
+      if (data?.weeklyActivity?.length && !selectedDay) {
+        setSelectedDay(data.weeklyActivity[data.weeklyActivity.length - 1].day);
+      }
+    } catch (err: any) {
+      setError(extractApiErrorMessage(err, 'Unable to load driver performance metrics.'));
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [selectedDay]);
 
-  const compliments = [
-    { id: '1', title: 'Smooth & Safe Driving', count: 48, icon: 'shield-checkmark', color: '#10b981' },
-    { id: '2', title: 'Courteous & Polite', count: 41, icon: 'happy', color: '#3b82f6' },
-    { id: '3', title: 'Quick & Punctual Pickup', count: 35, icon: 'flash', color: '#f59e0b' },
-    { id: '4', title: 'Clean & Fresh Vehicle', count: 29, icon: 'sparkles', color: '#8b5cf6' },
-  ];
+  useEffect(() => {
+    loadPerformance();
+  }, [loadPerformance]);
 
-  const badges = [
-    { id: 'b1', name: 'Top Rated Star', desc: 'Maintained 4.8+ rating for 60 days', icon: 'trophy', color: '#FFD700' },
-    { id: 'b2', name: 'Speedy Accepter', desc: 'Acceptance rate consistently above 95%', icon: 'rocket', color: '#00f2fe' },
-    { id: 'b3', name: 'Night Owl', desc: 'Completed 50+ late night shifts safely', icon: 'moon', color: '#f72585' },
-    { id: 'b4', name: 'Century Club', desc: '100+ rides with 0 customer disputes', icon: 'ribbon', color: '#10b981' },
-  ];
+  const weeklyActivity = perf?.weeklyActivity || [];
+  const maxRidesInWeek = Math.max(1, ...weeklyActivity.map((d) => d.rides));
+  const ratingValue = perf?.rating ?? 0;
+  const cancellationRate =
+    perf && perf.totalCompletedRides + perf.driverCancelledRides > 0
+      ? Math.round((perf.driverCancelledRides / (perf.totalCompletedRides + perf.driverCancelledRides)) * 100)
+      : 0;
 
   const handleSharePerformance = () => {
     showToast({
-      title: 'Performance Report Ready',
-      message: 'Weekly summary exported to documents successfully.',
+      title: 'Performance Summary',
+      message: `${perf?.totalCompletedRides ?? 0} completed trips • ${ratingValue.toFixed(1)} ★ rating`,
       type: 'success',
     });
   };
 
   return (
     <SafeAreaView style={styles.safeContainer}>
-      {/* Header with Navigation Back Button */}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
@@ -115,7 +127,7 @@ export default function PerformanceScreen({ navigation }: any) {
         </TouchableOpacity>
         <View style={styles.headerTitleWrap}>
           <Text style={styles.headerTitle}>Driver Performance</Text>
-          <Text style={styles.headerSub}>Quality Score & Analytics</Text>
+          <Text style={styles.headerSub}>Live Quality Score & Analytics</Text>
         </View>
         <TouchableOpacity
           onPress={handleSharePerformance}
@@ -127,196 +139,217 @@ export default function PerformanceScreen({ navigation }: any) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Overall Quality Score Hero Card */}
-        <View style={styles.scoreHeroCard}>
-          <View style={styles.scoreRow}>
-            <View style={styles.scoreCircle}>
-              <Text style={styles.scoreNumber}>4.92</Text>
-              <View style={styles.starsRow}>
-                <Ionicons name="star" size={13} color="#FFD700" />
-                <Ionicons name="star" size={13} color="#FFD700" />
-                <Ionicons name="star" size={13} color="#FFD700" />
-                <Ionicons name="star" size={13} color="#FFD700" />
-                <Ionicons name="star" size={13} color="#FFD700" />
-              </View>
-            </View>
-
-            <View style={styles.scoreMeta}>
-              <View style={styles.tierPill}>
-                <Ionicons name="shield-checkmark" size={12} color="#f72585" />
-                <Text style={styles.tierPillText}>GOLD DRIVER TIER</Text>
-              </View>
-              <Text style={styles.tierTitle}>Top 5% Partner</Text>
-              <Text style={styles.tierSub}>
-                Your exceptional reliability qualifies you for prioritized ride dispatch & 0% commission weekends.
-              </Text>
-            </View>
-          </View>
+      {loading && !refreshing ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color="#f72585" />
+          <Text style={{ marginTop: 10, color: '#64748b' }}>Loading driver analytics...</Text>
         </View>
-
-        {/* 6-Core Metrics Grid */}
-        <Text style={styles.sectionHeader}>Key Performance Indicators</Text>
-        <View style={styles.metricsGrid}>
-          <MetricCard
-            label="Acceptance Rate"
-            value="98.4%"
-            benchmark="≥ 85%"
-            status="excellent"
-            icon="checkmark-done-circle"
-            color="#10b981"
-          />
-          <MetricCard
-            label="Cancellation Rate"
-            value="1.2%"
-            benchmark="≤ 5.0%"
-            status="excellent"
-            icon="close-circle"
-            color="#06d6a0"
-          />
-          <MetricCard
-            label="On-Time Arrival"
-            value="97.8%"
-            benchmark="≥ 90%"
-            status="excellent"
-            icon="time"
-            color="#3b82f6"
-          />
-          <MetricCard
-            label="Customer Rating"
-            value="4.92 ★"
-            benchmark="≥ 4.70"
-            status="excellent"
-            icon="star"
-            color="#f59e0b"
-          />
-          <MetricCard
-            label="Trip Completion"
-            value="99.1%"
-            benchmark="≥ 95%"
-            status="excellent"
-            icon="flag"
-            color="#8b5cf6"
-          />
-          <MetricCard
-            label="Safety Compliance"
-            value="100%"
-            benchmark="100%"
-            status="excellent"
-            icon="shield-checkmark"
-            color="#f72585"
-          />
+      ) : error ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <Ionicons name="cloud-offline-outline" size={48} color="#ef4444" />
+          <Text style={{ marginTop: 10, color: '#111827', fontWeight: '700', fontSize: 16 }}>
+            Could Not Load Analytics
+          </Text>
+          <Text style={{ marginTop: 6, color: '#64748b', textAlign: 'center' }}>{error}</Text>
+          <TouchableOpacity
+            onPress={() => {
+              setLoading(true);
+              loadPerformance();
+            }}
+            style={{ marginTop: 16, backgroundColor: '#f72585', paddingHorizontal: 22, paddingVertical: 10, borderRadius: 10 }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '700' }}>Retry</Text>
+          </TouchableOpacity>
         </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true);
+                loadPerformance();
+              }}
+              colors={['#f72585']}
+            />
+          }
+        >
+          <View style={styles.scoreHeroCard}>
+            <View style={styles.scoreRow}>
+              <View style={styles.scoreCircle}>
+                <Text style={styles.scoreNumber}>{ratingValue > 0 ? ratingValue.toFixed(2) : '0.00'}</Text>
+                <View style={styles.starsRow}>
+                  <Ionicons name="star" size={13} color="#FFD700" />
+                  <Ionicons name="star" size={13} color="#FFD700" />
+                  <Ionicons name="star" size={13} color="#FFD700" />
+                  <Ionicons name="star" size={13} color="#FFD700" />
+                  <Ionicons name="star" size={13} color="#FFD700" />
+                </View>
+              </View>
 
-        {/* Weekly Activity Trends Chart */}
-        <View style={styles.chartCard}>
-          <View style={styles.chartHeaderRow}>
-            <View>
-              <Text style={styles.chartCardTitle}>Weekly Activity Rhythm</Text>
-              <Text style={styles.chartCardSub}>77 Total Rides • ₹12,700 Earned</Text>
-            </View>
-            <View style={styles.chartWeekPill}>
-              <Text style={styles.chartWeekText}>This Week</Text>
-            </View>
-          </View>
-
-          <View style={styles.barsContainer}>
-            {weeklyData.map((item) => {
-              const isSelected = selectedDay === item.day;
-              return (
-                <TouchableOpacity
-                  key={item.day}
-                  style={styles.barColumn}
-                  onPress={() => setSelectedDay(item.day)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.barValText, isSelected && { color: '#f72585', fontWeight: '800' }]}>
-                    {item.rides}
+              <View style={styles.scoreMeta}>
+                <View style={styles.tierPill}>
+                  <Ionicons name="shield-checkmark" size={12} color="#f72585" />
+                  <Text style={styles.tierPillText}>
+                    {ratingValue >= 4.8 && (perf?.totalCompletedRides ?? 0) >= 10 ? 'GOLD DRIVER TIER' : 'ACTIVE PARTNER'}
                   </Text>
-                  <View style={styles.barTrack}>
-                    <View
-                      style={[
-                        styles.barFill,
-                        { height: item.height },
-                        isSelected && { backgroundColor: '#f72585' },
-                      ]}
-                    />
-                  </View>
-                  <Text
-                    style={[
-                      styles.barDayText,
-                      isSelected && { color: '#f72585', fontWeight: '700' },
-                    ]}
-                  >
-                    {item.day}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {/* Day Highlight Card */}
-          {(() => {
-            const dayObj = weeklyData.find((w) => w.day === selectedDay);
-            if (!dayObj) return null;
-            return (
-              <View style={styles.dayHighlightRow}>
-                <Ionicons name="information-circle" size={16} color="#f72585" />
-                <Text style={styles.dayHighlightText}>
-                  {dayObj.day}: Completed <Text style={{ fontWeight: '700', color: '#111827' }}>{dayObj.rides} rides</Text> earning <Text style={{ fontWeight: '700', color: '#10b981' }}>₹{dayObj.earnings}</Text>
+                </View>
+                <Text style={styles.tierTitle}>{perf?.totalCompletedRides ?? 0} Completed Trips</Text>
+                <Text style={styles.tierSub}>
+                  Calculated directly from your verified trips, completion ratio, and passenger ratings.
                 </Text>
               </View>
-            );
-          })()}
-        </View>
-
-        {/* Customer Compliments */}
-        <Text style={styles.sectionHeader}>Customer Compliments</Text>
-        <View style={styles.complimentsGrid}>
-          {compliments.map((c) => (
-            <View key={c.id} style={styles.complimentCard}>
-              <View style={[styles.complimentIconWrap, { backgroundColor: `${c.color}15` }]}>
-                <Ionicons name={c.icon as any} size={22} color={c.color} />
-              </View>
-              <Text style={styles.complimentCount}>+{c.count}</Text>
-              <Text style={styles.complimentTitle}>{c.title}</Text>
             </View>
-          ))}
-        </View>
-
-        {/* Earned Badges */}
-        <Text style={styles.sectionHeader}>Unlocked Driver Badges</Text>
-        <View style={styles.badgesList}>
-          {badges.map((b) => (
-            <View key={b.id} style={styles.badgeRow}>
-              <View style={[styles.badgeIconWrap, { backgroundColor: `${b.color}20` }]}>
-                <Ionicons name={b.icon as any} size={22} color={b.color} />
-              </View>
-              <View style={styles.badgeTextWrap}>
-                <Text style={styles.badgeName}>{b.name}</Text>
-                <Text style={styles.badgeDesc}>{b.desc}</Text>
-              </View>
-              <View style={styles.unlockedTag}>
-                <Ionicons name="checkmark-done" size={14} color="#10b981" />
-              </View>
-            </View>
-          ))}
-        </View>
-
-        {/* Pro Tips Section */}
-        <View style={styles.tipsCard}>
-          <View style={styles.tipsHeaderRow}>
-            <Ionicons name="bulb-outline" size={20} color="#f59e0b" />
-            <Text style={styles.tipsTitle}>Tips to Maintain Gold Tier</Text>
           </View>
-          <Text style={styles.tipText}>• Accept incoming rides within 15 seconds to maximize matching priority.</Text>
-          <Text style={styles.tipText}>• Turn on "Destination Mode" / Go To Area when heading back home to avoid faraway pickups.</Text>
-          <Text style={styles.tipText}>• Maintain a warm greeting and confirm customer name prior to starting the trip.</Text>
-        </View>
-      </ScrollView>
+
+          <Text style={styles.sectionHeader}>Key Performance Indicators</Text>
+          <View style={styles.metricsGrid}>
+            <MetricCard
+              label="Acceptance Rate"
+              value={`${perf?.acceptanceRate ?? 0}%`}
+              benchmark="≥ 85%"
+              status={(perf?.acceptanceRate ?? 0) >= 85 ? 'excellent' : (perf?.acceptanceRate ?? 0) >= 60 ? 'good' : 'warning'}
+              icon="checkmark-done-circle"
+              color="#10b981"
+            />
+            <MetricCard
+              label="Driver Cancel Rate"
+              value={`${cancellationRate}%`}
+              benchmark="≤ 5.0%"
+              status={cancellationRate <= 5 ? 'excellent' : 'warning'}
+              icon="close-circle"
+              color="#06d6a0"
+            />
+            <MetricCard
+              label="Customer Rating"
+              value={`${ratingValue.toFixed(2)} ★`}
+              benchmark="≥ 4.70"
+              status={ratingValue >= 4.7 ? 'excellent' : ratingValue >= 4.2 ? 'good' : 'warning'}
+              icon="star"
+              color="#f59e0b"
+            />
+            <MetricCard
+              label="Trip Completion"
+              value={`${perf?.completionRate ?? 0}%`}
+              benchmark="≥ 95%"
+              status={(perf?.completionRate ?? 0) >= 95 ? 'excellent' : (perf?.completionRate ?? 0) >= 80 ? 'good' : 'warning'}
+              icon="flag"
+              color="#8b5cf6"
+            />
+            <MetricCard
+              label="Safety Compliance"
+              value={`${perf?.safetyCompliance ?? 100}%`}
+              benchmark="100%"
+              status={(perf?.safetyCompliance ?? 100) >= 95 ? 'excellent' : 'warning'}
+              icon="shield-checkmark"
+              color="#f72585"
+            />
+            <MetricCard
+              label="Weekly Trips"
+              value={`${perf?.totalWeeklyRides ?? 0}`}
+              benchmark="Weekly Count"
+              status={(perf?.totalWeeklyRides ?? 0) > 0 ? 'excellent' : 'good'}
+              icon="car-sport"
+              color="#3b82f6"
+            />
+          </View>
+
+          <View style={styles.chartCard}>
+            <View style={styles.chartHeaderRow}>
+              <View>
+                <Text style={styles.chartCardTitle}>Weekly Activity Rhythm</Text>
+                <Text style={styles.chartCardSub}>
+                  {perf?.totalWeeklyRides ?? 0} Rides • ₹{perf?.totalWeeklyEarnings ?? 0} Earned
+                </Text>
+              </View>
+              <View style={styles.chartWeekPill}>
+                <Text style={styles.chartWeekText}>Last 7 Days</Text>
+              </View>
+            </View>
+
+            <View style={styles.barsContainer}>
+              {weeklyActivity.map((item) => {
+                const isSelected = selectedDay === item.day;
+                const heightPct = item.rides > 0 ? Math.max(12, Math.round((item.rides / maxRidesInWeek) * 100)) : 4;
+                return (
+                  <TouchableOpacity
+                    key={item.date || item.day}
+                    style={styles.barColumn}
+                    onPress={() => setSelectedDay(item.day)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.barValText, isSelected && { color: '#f72585', fontWeight: '800' }]}>
+                      {item.rides}
+                    </Text>
+                    <View style={styles.barTrack}>
+                      <View
+                        style={[
+                          styles.barFill,
+                          { height: heightPct },
+                          isSelected && { backgroundColor: '#f72585' },
+                        ]}
+                      />
+                    </View>
+                    <Text
+                      style={[
+                        styles.barDayText,
+                        isSelected && { color: '#f72585', fontWeight: '700' },
+                      ]}
+                    >
+                      {item.day}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {(() => {
+              const dayObj = weeklyActivity.find((w) => w.day === selectedDay);
+              if (!dayObj) return null;
+              return (
+                <View style={styles.dayHighlightRow}>
+                  <Ionicons name="information-circle" size={16} color="#f72585" />
+                  <Text style={styles.dayHighlightText}>
+                    {dayObj.day}: Completed <Text style={{ fontWeight: '700', color: '#111827' }}>{dayObj.rides} rides</Text> earning <Text style={{ fontWeight: '700', color: '#10b981' }}>₹{dayObj.earnings}</Text>
+                  </Text>
+                </View>
+              );
+            })()}
+          </View>
+
+          <Text style={styles.sectionHeader}>Driver Milestones</Text>
+          <View style={styles.badgesList}>
+            {(perf?.badges || []).map((b) => (
+              <View key={b.id} style={[styles.badgeRow, !b.unlocked && { opacity: 0.55 }]}>
+                <View style={[styles.badgeIconWrap, { backgroundColor: `${b.color}20` }]}>
+                  <Ionicons name={(b.icon as any) || 'ribbon'} size={22} color={b.color} />
+                </View>
+                <View style={styles.badgeTextWrap}>
+                  <Text style={styles.badgeName}>{b.name}</Text>
+                  <Text style={styles.badgeDesc}>
+                    {b.desc} ({b.current}/{b.target})
+                  </Text>
+                </View>
+                <View style={[styles.unlockedTag, !b.unlocked && { backgroundColor: '#f1f5f9' }]}>
+                  <Ionicons name={b.unlocked ? 'checkmark-done' : 'lock-closed'} size={14} color={b.unlocked ? '#10b981' : '#94a3b8'} />
+                </View>
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.tipsCard}>
+            <View style={styles.tipsHeaderRow}>
+              <Ionicons name="bulb-outline" size={20} color="#f59e0b" />
+              <Text style={styles.tipsTitle}>Performance Guidelines</Text>
+            </View>
+            <Text style={styles.tipText}>• Accept incoming rides quickly to raise your acceptance ratio.</Text>
+            <Text style={styles.tipText}>• Confirm pickup and drop within the 50m GPS geofence zone.</Text>
+            <Text style={styles.tipText}>• Complete trips safely to unlock milestone badges.</Text>
+          </View>
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }

@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
 import { 
   ShieldCheck, 
   Car, 
@@ -18,6 +17,8 @@ import { StatusPill } from '../../../components/common/StatusPill';
 import { QuickActionBtn } from '../../../components/common/QuickActionBtn';
 import { NotificationToast } from '../../../components/common/NotificationToast';
 
+import { adminApi } from '../../../api/adminApi';
+
 export function HeadOfFleetCoachDashboard() {
   const [coaches, setCoaches] = useState([]);
   const [fleetBreakdown, setFleetBreakdown] = useState([]);
@@ -25,50 +26,36 @@ export function HeadOfFleetCoachDashboard() {
     activeFleetDrivers: 0,
     inOnboardingPipeline: 0,
     inspectionsCount: 0,
-    fleetComplianceRate: '98.4%',
-    avgDriverRating: 4.86
+    fleetComplianceRate: '0.0%',
+    avgDriverRating: 0
   });
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-  const token = sessionStorage.getItem('vlt_master_token');
-  const authHeader = token ? { headers: { 'x-auth-token': token } } : {};
-
   const fetchHeadOfFleetData = useCallback(async () => {
     setLoading(true);
     try {
-      const [zonesRes, metricsRes, driversRes] = await Promise.allSettled([
-        axios.get(`${API_URL}/fleet/zones`, authHeader),
-        axios.get(`${API_URL}/fleet/metrics`, authHeader),
-        axios.get(`${API_URL}/admin/drivers`, authHeader)
+      const [zonesData, metricsData, driversData] = await Promise.all([
+        adminApi.getFleetZones(),
+        adminApi.getFleetMetrics(),
+        adminApi.getDrivers(),
       ]);
 
-      const coachNames = ['Vikram Singh', 'Sunil Gowda', 'Preeti Deshmukh', 'Imran Khan', 'Kavita Menon'];
+      const rawZones = Array.isArray(zonesData) ? zonesData : [];
+      const mappedCoaches = rawZones.map((z, idx) => ({
+        id: `FCH-0${idx + 1}`,
+        name: z.coachName || z.name,
+        zone: `${z.name} (${z.city || 'City'})`,
+        activeDrivers: z.activeDrivers || 0,
+        pendingReviews: Math.max(0, Math.round(((z.targetDrivers || 0) - (z.activeDrivers || 0)) * 0.1)),
+        complianceRate: `${z.complianceRate ?? 0}%`,
+        status: 'active',
+      }));
+      setCoaches(mappedCoaches);
 
-      if (zonesRes.status === 'fulfilled' && zonesRes.value.data?.data) {
-        const rawZones = zonesRes.value.data.data;
-        const mappedCoaches = (Array.isArray(rawZones) ? rawZones : []).map((z, idx) => ({
-          id: `FCH-0${idx + 1}`,
-          name: z.coachName || coachNames[idx % coachNames.length],
-          zone: `${z.name} (${z.city || 'Bangalore'})`,
-          activeDrivers: z.activeDrivers || 0,
-          pendingReviews: Math.max(0, Math.round(((z.targetDrivers || 100) - (z.activeDrivers || 0)) * 0.1)),
-          complianceRate: `${z.complianceRate || 98.0}%`,
-          status: 'active'
-        }));
-        setCoaches(mappedCoaches);
-      } else {
-        setCoaches([]);
-      }
+      if (metricsData) setMetrics(metricsData);
 
-      if (metricsRes.status === 'fulfilled' && metricsRes.value.data?.data) {
-        setMetrics(metricsRes.value.data.data);
-      }
-
-      const drivers = (driversRes.status === 'fulfilled' && driversRes.value.data?.data) 
-        ? (Array.isArray(driversRes.value.data.data) ? driversRes.value.data.data : []) 
-        : [];
+      const drivers = Array.isArray(driversData) ? driversData : [];
 
       const bikeCount = drivers.filter(d => (d.vehicleType || '').toLowerCase().includes('bike')).length;
       const scootyCount = drivers.filter(d => (d.vehicleType || '').toLowerCase().includes('scoot')).length;

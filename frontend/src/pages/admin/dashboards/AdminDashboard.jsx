@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { adminApi } from '../../../api/adminApi';
 import { 
   Users, 
   Car, 
@@ -36,22 +36,19 @@ export function AdminDashboard() {
 
   const fetchData = async () => {
     setLoading(true);
-    const token = sessionStorage.getItem('vlt_master_token');
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-    const config = token ? { headers: { 'x-auth-token': token } } : {};
-
     try {
-      const [statsRes, ridesRes, healthRes] = await Promise.allSettled([
-        axios.get(`${API_URL}/admin/stats`, config),
-        axios.get(`${API_URL}/admin/recent-rides`, config),
-        axios.get(`${API_URL}/health`)
+      const [statsData, ridesData, healthData] = await Promise.all([
+        adminApi.getStats(),
+        adminApi.getRecentRides(),
+        adminApi.getHealth(),
       ]);
 
-      if (statsRes.status === 'fulfilled') setStats(statsRes.value.data.data);
-      if (ridesRes.status === 'fulfilled') setRecentRides(ridesRes.value.data.data);
-      if (healthRes.status === 'fulfilled') setHealthStatus(healthRes.value.data);
+      if (statsData) setStats(statsData);
+      if (ridesData) setRecentRides(Array.isArray(ridesData) ? ridesData : []);
+      if (healthData) setHealthStatus(healthData);
     } catch (err) {
       console.error('Failed to load admin dashboard data', err);
+      setToast({ title: 'Load Error', message: err.message || 'Unable to load stats', type: 'error' });
     } finally {
       setLoading(false);
     }

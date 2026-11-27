@@ -127,6 +127,74 @@ export const getTopupStatus = asyncHandler(async (req: AuthenticatedRequest, res
 });
 
 /**
+ * ALL /api/wallet/topup/callback — Razorpay redirect callback for WebView/3DS bank flows
+ */
+export const handleTopupCallback = async (req: any, res: Response) => {
+  const payload = { ...(req.query || {}), ...(req.body || {}) };
+  const razorpay_order_id = payload.razorpay_order_id;
+  const razorpay_payment_id = payload.razorpay_payment_id;
+  const razorpay_signature = payload.razorpay_signature;
+
+  if (razorpay_order_id && razorpay_payment_id && razorpay_signature) {
+    try {
+      const existingOrder = await prisma.paymentOrder.findUnique({
+        where: { orderId: String(razorpay_order_id) },
+      });
+      if (existingOrder) {
+        const result = await verifyTopupPayment(
+          existingOrder.userId,
+          (existingOrder.userType as 'customer' | 'rider') || 'customer',
+          {
+            razorpay_order_id: String(razorpay_order_id),
+            razorpay_payment_id: String(razorpay_payment_id),
+            razorpay_signature: String(razorpay_signature),
+          }
+        );
+        if (req.io && existingOrder.userId) {
+          req.io.to(existingOrder.userId).emit('wallet:updated', {
+            balance: result.newBalance,
+            orderId: result.orderId,
+          });
+        }
+      }
+
+      const dataJson = JSON.stringify({
+        event: 'PAYMENT_SUCCESS',
+        payload: { razorpay_order_id, razorpay_payment_id, razorpay_signature },
+      });
+      return res.status(200).send(`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:40px;">
+        <h2>Payment Verified!</h2><p>Returning to DriveMate Wallet...</p>
+        <script>
+          if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+            window.ReactNativeWebView.postMessage(${JSON.stringify(dataJson)});
+          }
+        </script>
+      </body></html>`);
+    } catch (err: any) {
+      const errJson = JSON.stringify({ event: 'PAYMENT_FAILED', message: err.message });
+      return res.status(400).send(`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:40px;">
+        <h2>Payment Failed</h2><p>${String(err.message || 'Verification failed').replace(/</g, '&lt;')}</p>
+        <script>
+          if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+            window.ReactNativeWebView.postMessage(${JSON.stringify(errJson)});
+          }
+        </script>
+      </body></html>`);
+    }
+  }
+
+  const cancelJson = JSON.stringify({ event: 'PAYMENT_CANCELLED' });
+  return res.status(200).send(`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:40px;">
+    <p>Payment Cancelled</p>
+    <script>
+      if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+        window.ReactNativeWebView.postMessage(${JSON.stringify(cancelJson)});
+      }
+    </script>
+  </body></html>`);
+};
+
+/**
  * POST /api/wallet/topup/simulate-test-payment — helper for testing in Expo Go
  */
 export const simulatePayment = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {

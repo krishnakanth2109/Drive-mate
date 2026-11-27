@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { adminApi } from '../../../api/adminApi';
 import { 
   Car, 
   MapPin, 
@@ -24,14 +24,8 @@ export function LiveRidesView() {
 
   const fetchRides = async () => {
     setLoading(true);
-    const token = sessionStorage.getItem('vlt_master_token');
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-
     try {
-      const res = await axios.get(`${API_URL}/admin/recent-rides`, {
-        headers: token ? { 'x-auth-token': token } : {}
-      });
-      const data = res.data?.data || res.data || [];
+      const data = await adminApi.getRecentRides();
       setRides(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Failed to fetch live rides from backend:', err);

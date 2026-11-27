@@ -8,6 +8,7 @@ export default function VehicleScreen() {
   const [vehicle, setVehicle] = useState<VehicleInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
   // Edit fields
@@ -18,14 +19,15 @@ export default function VehicleScreen() {
 
   const fetchVehicle = useCallback(async () => {
     try {
+      setError(null);
       const data = await riderService.getVehicle();
       setVehicle(data);
-      setModel(data.model || '');
-      setPlate(data.plate || '');
-      setColor(data.color || '');
-      setYear(data.year || '');
-    } catch (err) {
-      console.log('Failed to fetch vehicle:', err);
+      setModel(data?.model || '');
+      setPlate(data?.plate || '');
+      setColor(data?.color || '');
+      setYear(data?.year || '');
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Unable to load vehicle information.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -62,9 +64,24 @@ export default function VehicleScreen() {
     >
       <View style={styles.vehicleImageContainer}>
         <Ionicons name="car-sport" size={90} color="#3b5998" />
-        <Text style={styles.plateNumber}>{vehicle?.plate || 'KA-01-AB-1234'}</Text>
-        <Text style={styles.vehicleName}>{vehicle?.model || 'Honda Activa 6G'}</Text>
+        {loading ? (
+          <ActivityIndicator size="small" color="#f72585" style={{ marginTop: 12 }} />
+        ) : (
+          <>
+            <Text style={styles.plateNumber}>{vehicle?.plate || 'Plate Not Set'}</Text>
+            <Text style={styles.vehicleName}>{vehicle?.model || 'Tap Edit to register vehicle'}</Text>
+          </>
+        )}
       </View>
+
+      {error ? (
+        <View style={{ margin: 16, padding: 14, backgroundColor: '#fef2f2', borderRadius: 12, alignItems: 'center' }}>
+          <Text style={{ color: '#b91c1c', marginBottom: 8 }}>{error}</Text>
+          <TouchableOpacity onPress={fetchVehicle}>
+            <Text style={{ color: '#f72585', fontWeight: '700' }}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       <View style={styles.detailsCard}>
         <View style={styles.cardHeaderRow}>
@@ -96,7 +113,7 @@ export default function VehicleScreen() {
           <>
             <View style={styles.row}>
               <Text style={styles.label}>Make & Model</Text>
-              <Text style={styles.value}>{vehicle?.model || 'Honda Activa 6G'}</Text>
+              <Text style={styles.value}>{vehicle?.model || 'Not specified'}</Text>
             </View>
             <View style={styles.divider} />
             <View style={styles.row}>

@@ -38,9 +38,71 @@ export interface FareOption {
   type: string;
   label: string;
   emoji: string;
+  seats?: string;
+  desc?: string;
+  baseFare?: number;
   fare: number;
+  surgeAmount?: number;
+  surgeMultiplier?: number;
   perKm: number;
   eta: number;
+}
+
+export interface SurgeHotZone {
+  id: string;
+  name: string;
+  city: string;
+  demandLevel: string;
+  surgeMultiplier: number;
+  activeDrivers: number;
+  pendingRiders: number;
+  status: string;
+  reason?: string | null;
+}
+
+export interface SurgeBreakdown {
+  baseMultiplier: number;
+  demandSurcharge: number;
+  trafficSurcharge: number;
+  peakSurcharge: number;
+  zoneOverrideMultiplier: number | null;
+  matchedZoneName: string | null;
+}
+
+export interface VehicleStartingFare {
+  type: string;
+  label: string;
+  emoji: string;
+  seats?: string;
+  desc?: string;
+  baseFare: number;
+  fare: number;
+  perKm: number;
+  surgeMultiplier: number;
+  eta: number;
+}
+
+export interface SurgeStatus {
+  multiplier: number;
+  isSurgeActive: boolean;
+  demandLevel: 'Low' | 'Moderate' | 'High' | 'Extreme';
+  trafficLevel: 'Smooth' | 'Moderate' | 'Heavy' | 'Severe';
+  trafficDelayMinutes: number;
+  trafficSpeedKmh: number;
+  trafficRatio: number;
+  activeRequestsNearby: number;
+  activeRequestsCity: number;
+  recentDemandCount?: number;
+  availableDriversNearby: number;
+  availableDriversCity: number;
+  demandSupplyRatio: number;
+  peakWindowActive: boolean;
+  peakLabel: string | null;
+  reason: string;
+  breakdown?: SurgeBreakdown;
+  hotZones?: SurgeHotZone[];
+  vehicleStartingFares?: VehicleStartingFare[];
+  updatedAt?: string;
 }
 
 export interface RouteCoordinate {
@@ -53,6 +115,10 @@ export interface Estimate {
   drop: { lat: number; lng: number; address: string; name?: string };
   distance: number;
   duration: number;
+  staticDuration?: number;
+  trafficDelayMinutes?: number;
+  trafficLevel?: string;
+  surge?: SurgeStatus;
   polyline: string;
   coordinates?: RouteCoordinate[];
   fareOptions: FareOption[];
@@ -68,8 +134,13 @@ export interface Driver {
 export interface ActiveRide {
   _id: string;
   id?: string;
+  displayId?: string;
   otp: string;
   fare: number;
+  baseFare?: number;
+  surgeMultiplier?: number;
+  surgeAmount?: number;
+  surgeReason?: string;
   status: string;
   arrivedAt?: string | null;
   startedAt?: string | null;
@@ -114,6 +185,9 @@ interface CustomerContextType {
   activeRide: ActiveRide | null;
   driverLocation: DriverLocation | null;
   availableDrivers: { [id: string]: { lat: number; lng: number; heading: number; vehicleType: string } };
+  surgeStatus: SurgeStatus | null;
+  isLoadingSurge: boolean;
+  refreshSurgeStatus: (lat?: number, lng?: number, address?: string) => Promise<SurgeStatus | null>;
   googleMapsKey: string | null;
   currentUser: CustomerUser | null;
   setCurrentUser: (user: CustomerUser | null) => void;
@@ -162,6 +236,8 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
   const [activeRide, setActiveRide] = useState<ActiveRide | null>(null);
   const [driverLocation, setDriverLocation] = useState<DriverLocation | null>(null);
   const [availableDrivers, setAvailableDrivers] = useState<{ [id: string]: { lat: number; lng: number; heading: number; vehicleType: string } }>({});
+  const [surgeStatus, setSurgeStatus] = useState<SurgeStatus | null>(null);
+  const [isLoadingSurge, setIsLoadingSurge] = useState<boolean>(false);
   const [googleMapsKey, setGoogleMapsKey] = useState<string | null>('AIzaSyDOMtmUqwZCLcEHSGQI4WpBLnvBiEPmX2E');
 
   const activeRideIdRef = useRef<string | null>(null);
@@ -294,10 +370,30 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
     checkAndRestoreSession();
     requestCurrentLocation();
 
-    // Fetch nearby drivers
+    // Fetch Google Maps API key from backend if configured
     (async () => {
       try {
-        const res: any = await api.get('/users/nearby?lat=17.385&lng=78.4867');
+        const res: any = await api.get('/config/maps-key');
+        const key = res.key || res.data?.key || res;
+        if (typeof key === 'string') {
+          setGoogleMapsKey(key);
+        }
+      } catch (e) {
+        console.log('Using configured maps key');
+      }
+    })();
+  }, [requestCurrentLocation]);
+
+  // ── Fetch nearby online drivers whenever userLocation updates ──
+  useEffect(() => {
+    if (!isLoggedIn || !userLocation) return;
+    let active = true;
+    (async () => {
+      try {
+        const res: any = await api.get(
+          `/users/nearby?lat=${userLocation.latitude}&lng=${userLocation.longitude}`
+        );
+        if (!active) return;
         const driverList = Array.isArray(res) ? res : res.data || [];
         const initialDrivers: any = {};
         driverList.forEach((d: any) => {
@@ -313,20 +409,57 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
         setAvailableDrivers(initialDrivers);
       } catch (err) {}
     })();
+    return () => {
+      active = false;
+    };
+  }, [isLoggedIn, userLocation?.latitude, userLocation?.longitude]);
 
-    // Fetch Google Maps API key from backend if configured
-    (async () => {
+  // ── Live Traffic & User Demand Surge Telemetry ──────────
+  const refreshSurgeStatus = useCallback(
+    async (lat?: number, lng?: number, address?: string): Promise<SurgeStatus | null> => {
       try {
-        const res: any = await api.get('/config/maps-key');
-        const key = res.key || res.data?.key || res;
-        if (typeof key === 'string') {
-          setGoogleMapsKey(key);
+        const token = await AsyncStorage.getItem('token');
+        if (!token) return null;
+
+        setIsLoadingSurge(true);
+        const targetLat = lat ?? userLocation?.latitude;
+        const targetLng = lng ?? userLocation?.longitude;
+        const targetAddress = address ?? currentAddress ?? undefined;
+
+        const res: any = await api.get('/ride/surge-status', {
+          params: {
+            ...(targetLat != null ? { lat: targetLat } : {}),
+            ...(targetLng != null ? { lng: targetLng } : {}),
+            ...(targetAddress ? { address: targetAddress } : {}),
+          },
+        });
+
+        const payload: SurgeStatus | null = res?.data?.multiplier != null ? res.data : res?.multiplier != null ? res : null;
+        if (payload) {
+          setSurgeStatus(payload);
+          return payload;
         }
-      } catch (e) {
-        console.log('Using configured maps key');
+        return null;
+      } catch (err) {
+        return null;
+      } finally {
+        setIsLoadingSurge(false);
       }
-    })();
-  }, [requestCurrentLocation]);
+    },
+    [userLocation?.latitude, userLocation?.longitude, currentAddress]
+  );
+
+  // Auto-refresh surge whenever user location/login settles & periodically on home screen
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    refreshSurgeStatus();
+    const interval = setInterval(() => {
+      if (appState === 'IDLE' || appState === 'ESTIMATING') {
+        refreshSurgeStatus();
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [isLoggedIn, userLocation?.latitude, userLocation?.longitude, appState, refreshSurgeStatus]);
 
   // ── Search Places (Autocomplete through Backend) ──
   const searchPlaces = useCallback(async (query: string, bias?: { lat: number; lng: number }): Promise<AutocompleteItem[]> => {
@@ -404,11 +537,14 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
       setAppState('ACCEPTED');
     });
 
-    // Ride status updates (arrived / ongoing / completed)
+    // Ride status updates (arrived / ongoing / drop_arrived / completed)
     socket.on('ride_status_update', (data: { status: string; ride: ActiveRide; waitInfo?: any }) => {
       if (data.status === 'arrived') {
         setActiveRide(data.ride);
       } else if (data.status === 'ongoing') {
+        setActiveRide(data.ride);
+        setAppState('ONGOING');
+      } else if (data.status === 'drop_arrived') {
         setActiveRide(data.ride);
         setAppState('ONGOING');
       } else if (data.status === 'completed') {
@@ -423,6 +559,15 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
       Alert.alert(
         'Driver Arrived!',
         `Your driver has arrived at the pickup location. Free waiting period is ${data.freeWaitMinutes || 3} minutes.`
+      );
+    });
+
+    // Driver reached destination drop-off notification
+    socket.on('driver_arrived_drop', (data: { ride: ActiveRide; message?: string }) => {
+      setActiveRide(data.ride);
+      Alert.alert(
+        'Destination Reached',
+        data.message || 'Your driver has reached the drop location.'
       );
     });
 
@@ -445,14 +590,55 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
       resetFlow();
     });
 
+    // Real-time surge pricing update broadcast from server / ops console
+    socket.on('surge:update', (data: any) => {
+      if (!data) return;
+      setSurgeStatus((prev) => {
+        const nextMultiplier = Number(data.multiplier ?? data.surgeMultiplier ?? prev?.multiplier ?? 1.0);
+        if (!prev) {
+          return {
+            multiplier: nextMultiplier,
+            isSurgeActive: nextMultiplier > 1.04,
+            demandLevel: data.demandLevel || 'Moderate',
+            trafficLevel: data.trafficLevel || 'Smooth',
+            trafficDelayMinutes: 0,
+            trafficSpeedKmh: 24,
+            trafficRatio: 1.0,
+            activeRequestsNearby: Number(data.activeRequestsNearby ?? 0),
+            activeRequestsCity: Number(data.activeRequestsNearby ?? 0),
+            availableDriversNearby: Number(data.availableDriversNearby ?? 0),
+            availableDriversCity: Number(data.availableDriversNearby ?? 0),
+            demandSupplyRatio: 0,
+            peakWindowActive: false,
+            peakLabel: null,
+            reason: data.reason || `Live traffic updated (${nextMultiplier.toFixed(1)}x)`,
+            updatedAt: data.updatedAt,
+          };
+        }
+        return {
+          ...prev,
+          multiplier: nextMultiplier,
+          isSurgeActive: nextMultiplier > 1.04,
+          demandLevel: data.demandLevel || prev.demandLevel,
+          trafficLevel: data.trafficLevel || prev.trafficLevel,
+          activeRequestsNearby: data.activeRequestsNearby ?? prev.activeRequestsNearby,
+          availableDriversNearby: data.availableDriversNearby ?? prev.availableDriversNearby,
+          reason: data.reason || prev.reason,
+          updatedAt: data.updatedAt || new Date().toISOString(),
+        };
+      });
+    });
+
     return () => {
       socket.off('ride_accepted');
       socket.off('ride_status_update');
       socket.off('driver_arrived');
+      socket.off('driver_arrived_drop');
       socket.off('wait_time_expired');
       socket.off('driver_location_update');
       socket.off('available_driver_location');
       socket.off('ride_timeout');
+      socket.off('surge:update');
     };
   }, []);
 
@@ -591,6 +777,9 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({
         activeRide,
         driverLocation,
         availableDrivers,
+        surgeStatus,
+        isLoadingSurge,
+        refreshSurgeStatus,
         googleMapsKey,
         currentUser,
         setCurrentUser,

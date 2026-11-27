@@ -148,10 +148,13 @@ export default function ServicesScreen() {
       color: '#ffd166',
       badge: '₹100',
       action: () => {
+        const refId = currentUser?._id || (currentUser as any)?.id;
         Alert.alert(
-          'Refer & Earn ₹100',
-          `Share your referral code: DRIVEMATE${currentUser?.name?.slice(0, 3).toUpperCase() || 'PASS'}\n\nBoth you and your friend get ₹100 wallet credits after their first completed ride!`,
-          [{ text: 'Copy Code', onPress: () => {} }, { text: 'Done' }]
+          'Refer & Earn',
+          refId
+            ? `Your referral account code is DM-${String(refId).slice(-6).toUpperCase()}.`
+            : 'Please log in to view your referral code.',
+          [{ text: 'Done' }]
         );
       },
     },

@@ -54,11 +54,11 @@ export function RidesAvailableView({
     return matchCity && matchSearch;
   });
 
-  const handleRequestSeat = (rideId) => {
+  const handleRequestSeat = (rideId, postObj) => {
     setSeatRequestedId(rideId);
-    setTimeout(() => {
-      setSeatRequestedId(null);
-    }, 3000);
+    if (onOpenChat && postObj) {
+      onOpenChat(postObj);
+    }
   };
 
   return (
@@ -271,7 +271,7 @@ export function RidesAvailableView({
 
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => handleRequestSeat(ride.id || idx)}
+                      onClick={() => handleRequestSeat(ride.id || idx, ride)}
                       disabled={isRequested}
                       className={`
                         px-4 py-2 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer

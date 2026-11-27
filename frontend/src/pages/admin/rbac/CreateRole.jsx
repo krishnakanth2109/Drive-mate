@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { ShieldAlert, ArrowLeft } from 'lucide-react';
+import { adminApi } from '../../../api/adminApi';
 
 const PERMISSION_GROUPS = [
   {
@@ -92,18 +92,14 @@ export function CreateRole() {
 
   const handleCreate = async () => {
     try {
-      const token = sessionStorage.getItem('vlt_master_token');
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-      await axios.post(`${API_URL}/rbac/roles`, {
+      await adminApi.createRole({
         ...formData,
         permissions: selectedPermissions
-      }, {
-        headers: { 'x-auth-token': token }
       });
       alert('Role created successfully!');
       navigate('/master/access-control/roles');
     } catch (err) {
-      alert(err.response?.data?.message || 'Error creating role');
+      alert(err.message || 'Error creating role');
     }
   };
 

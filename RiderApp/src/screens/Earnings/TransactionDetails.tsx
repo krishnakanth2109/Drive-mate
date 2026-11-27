@@ -3,19 +3,33 @@ import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView } fr
 import { Ionicons } from '@expo/vector-icons';
 
 export default function TransactionDetails({ route, navigation }: any) {
-  const transaction = route?.params?.transaction || {
-    _id: 'TXN-901842',
-    type: 'credit',
-    amount: 850,
-    currency: 'INR',
-    description: 'Ride Earnings - Trip #8942',
-    createdAt: new Date().toISOString(),
-    status: 'Completed',
-    referenceId: 'TRIP-8942'
-  };
+  const transaction = route?.params?.transaction || null;
 
-  const isCredit = transaction.type === 'credit';
-  const dateFormatted = new Date(transaction.createdAt || Date.now()).toLocaleString();
+  if (!transaction) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={24} color="#1a1a2e" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Transaction Details</Text>
+          <View style={{ width: 24 }} />
+        </View>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <Ionicons name="receipt-outline" size={56} color="#94a3b8" />
+          <Text style={{ fontSize: 16, fontWeight: '700', color: '#1a1a2e', marginTop: 12 }}>
+            No Transaction Selected
+          </Text>
+          <Text style={{ color: '#64748b', marginTop: 6, textAlign: 'center' }}>
+            Select a transaction from your Wallet ledger to view full breakdown.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const isCredit = transaction.type === 'credit' || transaction.direction === 'CREDIT';
+  const dateFormatted = transaction.createdAt ? new Date(transaction.createdAt).toLocaleString('en-IN') : '';
 
   return (
     <SafeAreaView style={styles.safeArea}>

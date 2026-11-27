@@ -148,7 +148,7 @@ export const getStats = asyncHandler(async (req: AuthenticatedRequest, res: Resp
       _sum: { fare: true },
     }),
     prisma.ride.count({
-      where: { status: { in: ['pending', 'accepted', 'arrived', 'in_progress'] } },
+      where: { status: { in: ['pending', 'accepted', 'arrived', 'ongoing', 'drop_arrived', 'in_progress'] } },
     }),
     prisma.ride.count({
       where: { status: 'completed' },
@@ -374,10 +374,10 @@ export const getCustomersList = asyncHandler(async (req: AuthenticatedRequest, r
     name: c.name,
     phone: c.phone,
     email: c.email,
-    walletBalance: c.walletBalance,
+    walletBalance: Number(c.walletBalance || 0),
     totalRides: c._count.rides,
     status: 'active',
-    rating: 4.8,
+    rating: null,
     createdAt: c.createdAt,
     lastActive: c.rides[0]?.createdAt || c.createdAt,
   }));
@@ -416,8 +416,8 @@ export const getDriversList = asyncHandler(async (req: AuthenticatedRequest, res
     vehicle: d.vehicle,
     isAvailable: d.isAvailable,
     status: d.isAvailable ? 'online' : 'offline',
-    walletBalance: d.walletBalance,
-    rating: d.rating || 4.9,
+    walletBalance: Number(d.walletBalance || 0),
+    rating: d.rating !== null && d.rating !== undefined ? Number(d.rating) : null,
     completedRides: d._count.rides,
     createdAt: d.createdAt,
   }));

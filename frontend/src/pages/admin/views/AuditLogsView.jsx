@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { adminApi } from '../../../api/adminApi';
 import { 
   ShieldAlert, 
   Terminal, 
@@ -22,18 +22,9 @@ export function AuditLogsView() {
 
   const fetchLogs = async () => {
     setLoading(true);
-    const token = sessionStorage.getItem('vlt_master_token');
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-
     try {
-      const res = await axios.get(`${API_URL}/rbac/audit-logs`, {
-        headers: token ? { 'x-auth-token': token } : {}
-      });
-      if (res.data?.data) {
-        setLogs(res.data.data);
-      } else {
-        setLogs([]);
-      }
+      const data = await adminApi.getAuditLogs();
+      setLogs(Array.isArray(data) ? data : []);
     } catch (err) {
       console.warn('Error fetching audit logs:', err);
       setLogs([]);

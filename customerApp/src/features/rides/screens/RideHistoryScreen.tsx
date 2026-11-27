@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,12 +8,16 @@ import {
   SafeAreaView,
   RefreshControl,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { rideHistoryService } from '../services/rideHistoryService';
+import { extractApiErrorMessage } from '../../../services/api';
 
 interface RideHistoryItem {
   id: string;
+  rawRide?: any;
   date: string;
   pickup: string;
   drop: string;
@@ -22,114 +26,110 @@ interface RideHistoryItem {
   duration: string;
   vehicleType: string;
   vehicleEmoji: string;
-  status: 'Completed' | 'Cancelled';
+  status: 'Completed' | 'Cancelled' | string;
   driverName: string;
-  driverRating: number;
+  driverRating: number | null;
   paymentMethod: string;
 }
 
-const MOCK_RIDES: RideHistoryItem[] = [
-  {
-    id: 'RIDE-1049',
-    date: 'Today, 02:45 PM',
-    pickup: 'Inorbit Mall, Hitec City',
-    drop: 'Mindspace Junction, Madhapur',
-    fare: 145,
-    distance: '4.8 km',
-    duration: '16 mins',
-    vehicleType: 'Car (Sedan)',
-    vehicleEmoji: '🚗',
-    status: 'Completed',
-    driverName: 'Ramesh K.',
-    driverRating: 4.9,
-    paymentMethod: 'Wallet',
-  },
-  {
-    id: 'RIDE-1048',
-    date: 'Yesterday, 07:15 PM',
-    pickup: 'Cyber Towers, Hitec City',
-    drop: 'Gachibowli DLF Cyber City',
-    fare: 75,
-    distance: '3.2 km',
-    duration: '11 mins',
-    vehicleType: 'Bike',
-    vehicleEmoji: '🏍️',
-    status: 'Completed',
-    driverName: 'Suresh V.',
-    driverRating: 4.8,
-    paymentMethod: 'Cash',
-  },
-  {
-    id: 'RIDE-1047',
-    date: '12 Oct, 11:20 AM',
-    pickup: 'Secunderabad Station',
-    drop: 'Banjara Hills Road No. 12',
-    fare: 210,
-    distance: '9.6 km',
-    duration: '28 mins',
-    vehicleType: 'Auto',
-    vehicleEmoji: '🛺',
-    status: 'Completed',
-    driverName: 'Mohd. Imran',
-    driverRating: 5.0,
-    paymentMethod: 'Wallet',
-  },
-  {
-    id: 'RIDE-1046',
-    date: '10 Oct, 09:05 PM',
-    pickup: 'Kondapur Main Road',
-    drop: 'Jubilee Hills Check Post',
-    fare: 180,
-    distance: '7.1 km',
-    duration: '22 mins',
-    vehicleType: 'Car (Sedan)',
-    vehicleEmoji: '🚗',
-    status: 'Cancelled',
-    driverName: 'Driver not assigned',
-    driverRating: 0,
-    paymentMethod: 'Cancelled by Rider',
-  },
-  {
-    id: 'RIDE-1045',
-    date: '08 Oct, 08:30 AM',
-    pickup: 'Financial District, Nanakramguda',
-    drop: 'IKEA Hyderabad, HITEC City',
-    fare: 95,
-    distance: '5.4 km',
-    duration: '15 mins',
-    vehicleType: 'Scooty',
-    vehicleEmoji: '🛵',
-    status: 'Completed',
-    driverName: 'Praveen T.',
-    driverRating: 4.7,
-    paymentMethod: 'Wallet',
-  },
-];
+const VEHICLE_EMOJI_MAP: Record<string, string> = {
+  bike: '🏍️',
+  scooty: '🛵',
+  auto: '🛺',
+  car: '🚗',
+};
+
+const formatRideRecord = (r: any): RideHistoryItem => {
+  const vKey = String(r.vehicleType || '').toLowerCase();
+  const statusStr = String(r.status || '').toLowerCase();
+  const created = r.createdAt ? new Date(r.createdAt) : null;
+  const dateText = created
+    ? created.toLocaleString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '';
+
+  return {
+    id: r.id || r._id,
+    rawRide: r,
+    date: dateText,
+    pickup: r.pickup?.address || r.pickupAddress || r.pickupPlaceName || 'Pickup',
+    drop: r.drop?.address || r.dropAddress || r.dropPlaceName || 'Drop',
+    fare: Number(r.fare ?? 0),
+    distance: r.distance ? `${Number(r.distance).toFixed(1)} km` : '0 km',
+    duration: r.duration ? `${Math.round(Number(r.duration))} mins` : '0 mins',
+    vehicleType: vKey ? vKey.charAt(0).toUpperCase() + vKey.slice(1) : 'Ride',
+    vehicleEmoji: VEHICLE_EMOJI_MAP[vKey] || '🚗',
+    status: statusStr === 'completed' ? 'Completed' : statusStr === 'cancelled' ? 'Cancelled' : statusStr.toUpperCase(),
+    driverName: r.rider?.name || (statusStr === 'cancelled' ? 'Cancelled' : 'Assigned Driver'),
+    driverRating: r.rider?.rating !== undefined && r.rider?.rating !== null ? Number(r.rider.rating) : null,
+    paymentMethod: r.paymentMethod || 'Cash',
+  };
+};
 
 export default function RideHistoryScreen() {
   const navigation = useNavigation<any>();
   const [filter, setFilter] = useState<'All' | 'Completed' | 'Cancelled'>('All');
   const [refreshing, setRefreshing] = useState(false);
-  const [rides, setRides] = useState<RideHistoryItem[]>(MOCK_RIDES);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [rides, setRides] = useState<RideHistoryItem[]>([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+
+  const loadRides = useCallback(
+    async (pageNum = 1, append = false) => {
+      try {
+        setError(null);
+        const res = await rideHistoryService.getHistory({
+          status: filter,
+          page: pageNum,
+          limit: 15,
+        });
+        const items = Array.isArray(res?.rides) ? res.rides.map(formatRideRecord) : [];
+        setRides((prev) => (append ? [...prev, ...items] : items));
+        setHasMore(Boolean(res?.pagination?.hasMore));
+        setPage(pageNum);
+      } catch (err: any) {
+        setError(extractApiErrorMessage(err, 'Failed to load your ride history.'));
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+        setLoadingMore(false);
+      }
+    },
+    [filter]
+  );
+
+  useEffect(() => {
+    setLoading(true);
+    loadRides(1, false);
+  }, [loadRides]);
 
   const onRefresh = () => {
     setRefreshing(true);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 800);
+    loadRides(1, false);
   };
 
-  const filteredRides = rides.filter((item) => {
-    if (filter === 'All') return true;
-    return item.status === filter;
-  });
+  const handleLoadMore = () => {
+    if (!hasMore || loadingMore || loading) return;
+    setLoadingMore(true);
+    loadRides(page + 1, true);
+  };
 
   const renderRideCard = ({ item }: { item: RideHistoryItem }) => {
     const isCompleted = item.status === 'Completed';
 
     return (
-      <View style={styles.card}>
-        {/* Card Header: Date & Status */}
+      <TouchableOpacity
+        style={styles.card}
+        activeOpacity={0.9}
+        onPress={() => navigation.navigate('RideHistoryDetails', { rideId: item.id, ride: item.rawRide })}
+      >
         <View style={styles.cardHeader}>
           <View style={styles.headerLeft}>
             <Text style={styles.vehicleEmoji}>{item.vehicleEmoji}</Text>
@@ -147,7 +147,6 @@ export default function RideHistoryScreen() {
 
         <View style={styles.divider} />
 
-        {/* Route Details */}
         <View style={styles.routeContainer}>
           <View style={styles.routeIndicators}>
             <View style={styles.pickupDot} />
@@ -172,20 +171,21 @@ export default function RideHistoryScreen() {
 
         <View style={styles.divider} />
 
-        {/* Card Footer: Driver, Distance & Fare */}
         <View style={styles.cardFooter}>
           <View>
             {isCompleted ? (
               <View style={styles.driverRow}>
                 <Ionicons name="person-circle-outline" size={18} color="#555" />
                 <Text style={styles.driverText}>{item.driverName}</Text>
-                <View style={styles.ratingBadge}>
-                  <Ionicons name="star" size={12} color="#f59e0b" />
-                  <Text style={styles.ratingText}>{item.driverRating}</Text>
-                </View>
+                {item.driverRating !== null ? (
+                  <View style={styles.ratingBadge}>
+                    <Ionicons name="star" size={12} color="#f59e0b" />
+                    <Text style={styles.ratingText}>{item.driverRating.toFixed(1)}</Text>
+                  </View>
+                ) : null}
               </View>
             ) : (
-              <Text style={styles.cancelledNote}>Trip cancelled</Text>
+              <Text style={styles.cancelledNote}>Trip {item.status.toLowerCase()}</Text>
             )}
             <Text style={styles.tripMeta}>
               {item.distance} • {item.duration}
@@ -198,13 +198,10 @@ export default function RideHistoryScreen() {
           </View>
         </View>
 
-        {/* Action Row */}
         <View style={styles.actionRow}>
           <TouchableOpacity
             style={styles.bookAgainBtn}
-            onPress={() => {
-              navigation.navigate('Home');
-            }}
+            onPress={() => navigation.navigate('Home')}
           >
             <Ionicons name="repeat-outline" size={16} color="#f72585" />
             <Text style={styles.bookAgainText}>Book Again</Text>
@@ -212,25 +209,22 @@ export default function RideHistoryScreen() {
 
           <TouchableOpacity
             style={styles.helpBtn}
-            onPress={() => {
-              navigation.navigate('Help');
-            }}
+            onPress={() => navigation.navigate('Help')}
           >
             <Ionicons name="help-circle-outline" size={16} color="#666" />
             <Text style={styles.helpText}>Need Help?</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Top Header */}
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>My Rides</Text>
-          <Text style={styles.subtitle}>View and manage past trips</Text>
+          <Text style={styles.subtitle}>View and manage your trips</Text>
         </View>
         <TouchableOpacity
           style={styles.receiptBtn}
@@ -240,7 +234,6 @@ export default function RideHistoryScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Filter Tabs */}
       <View style={styles.filterContainer}>
         {(['All', 'Completed', 'Cancelled'] as const).map((tab) => {
           const isActive = filter === tab;
@@ -258,36 +251,56 @@ export default function RideHistoryScreen() {
         })}
       </View>
 
-      {/* Rides List */}
-      <FlatList
-        data={filteredRides}
-        keyExtractor={(item) => item.id}
-        renderItem={renderRideCard}
-        contentContainerStyle={styles.listContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={['#f72585']}
-            tintColor="#f72585"
-          />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="car-outline" size={64} color="#ccc" />
-            <Text style={styles.emptyTitle}>No Rides Found</Text>
-            <Text style={styles.emptySub}>
-              You do not have any {filter.toLowerCase()} trips yet.
-            </Text>
-            <TouchableOpacity
-              style={styles.bookNowBtn}
-              onPress={() => navigation.navigate('Home')}
-            >
-              <Text style={styles.bookNowText}>Book a Ride Now</Text>
-            </TouchableOpacity>
-          </View>
-        }
-      />
+      {loading && !refreshing ? (
+        <View style={styles.emptyContainer}>
+          <ActivityIndicator size="large" color="#f72585" />
+          <Text style={styles.emptySub}>Loading your trip history...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="cloud-offline-outline" size={56} color="#ef4444" />
+          <Text style={styles.emptyTitle}>Could Not Load Rides</Text>
+          <Text style={styles.emptySub}>{error}</Text>
+          <TouchableOpacity style={styles.bookNowBtn} onPress={() => loadRides(1, false)}>
+            <Text style={styles.bookNowText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <FlatList
+          data={rides}
+          keyExtractor={(item) => item.id}
+          renderItem={renderRideCard}
+          contentContainerStyle={styles.listContent}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            loadingMore ? <ActivityIndicator size="small" color="#f72585" style={{ marginVertical: 16 }} /> : undefined
+          }
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={['#f72585']}
+              tintColor="#f72585"
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="car-outline" size={64} color="#ccc" />
+              <Text style={styles.emptyTitle}>No Rides Found</Text>
+              <Text style={styles.emptySub}>
+                You do not have any {filter === 'All' ? '' : `${filter.toLowerCase()} `}trips yet.
+              </Text>
+              <TouchableOpacity
+                style={styles.bookNowBtn}
+                onPress={() => navigation.navigate('Home')}
+              >
+                <Text style={styles.bookNowText}>Book a Ride Now</Text>
+              </TouchableOpacity>
+            </View>
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }

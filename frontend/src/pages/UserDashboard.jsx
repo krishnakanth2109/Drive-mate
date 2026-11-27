@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import axios from 'axios';
 import { io } from 'socket.io-client';
+import { communityApi } from '../api/communityApi';
+import { API_BASE_URL, SOCKET_BASE_URL } from '../api/client';
 
 import { DashboardHeader } from '../components/dashboard/DashboardHeader';
 import { DashboardOverview } from '../components/dashboard/DashboardOverview';
@@ -38,8 +39,8 @@ export function UserDashboard() {
   const socketRef = useRef(null);
   const messagesEndRef = useRef(null);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-  const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
+  const API_URL = API_BASE_URL;
+  const SOCKET_URL = SOCKET_BASE_URL;
 
   // 1. Session Auth Verification & Socket Init
   useEffect(() => {
@@ -101,10 +102,8 @@ export function UserDashboard() {
         params.search = searchQuery.trim();
       }
 
-      const res = await axios.get(`${API_URL}/community/posts`, { params });
-      if (res.data?.data) {
-        setPosts(res.data.data);
-      }
+      const postsList = await communityApi.getPosts(params);
+      setPosts(Array.isArray(postsList) ? postsList : []);
     } catch (err) {
       console.error('Error fetching community posts:', err);
     } finally {
@@ -118,13 +117,11 @@ export function UserDashboard() {
     if (!token) return;
 
     try {
-      const res = await axios.get(`${API_URL}/community/connections`, {
-        headers: { 'x-auth-token': token },
-      });
-      if (res.data?.data) {
-        setConnectedUsers(res.data.data);
-        if (res.data.data.length > 0 && !activeChatPeer) {
-          setActiveChatPeer(res.data.data[0]);
+      const list = await communityApi.getConnections();
+      if (Array.isArray(list)) {
+        setConnectedUsers(list);
+        if (list.length > 0 && !activeChatPeer) {
+          setActiveChatPeer(list[0]);
         }
       }
     } catch (err) {
@@ -142,16 +139,10 @@ export function UserDashboard() {
     if (!activeChatPeer) return;
 
     const fetchMessages = async () => {
-      const token = sessionStorage.getItem('dm_user_token');
       try {
-        const res = await axios.get(
-          `${API_URL}/community/messages/${activeChatPeer.id || activeChatPeer._id}`,
-          {
-            headers: token ? { 'x-auth-token': token } : {},
-          }
-        );
-        if (res.data?.data) {
-          setMessages(res.data.data);
+        const list = await communityApi.getDirectMessages(activeChatPeer.id || activeChatPeer._id);
+        if (Array.isArray(list)) {
+          setMessages(list);
         }
       } catch (err) {
         console.error('Error fetching messages:', err);
@@ -166,25 +157,19 @@ export function UserDashboard() {
     e?.preventDefault();
     if (!newMessageText.trim() || !activeChatPeer) return;
 
-    const token = sessionStorage.getItem('dm_user_token');
     const recipientId = activeChatPeer.id || activeChatPeer._id;
     const text = newMessageText.trim();
 
     setSendingMessage(true);
     try {
-      const res = await axios.post(
-        `${API_URL}/community/messages`,
-        { recipientId, content: text },
-        { headers: token ? { 'x-auth-token': token } : {} }
-      );
-
-      if (res.data?.data) {
-        setMessages((prev) => [...prev, res.data.data]);
+      const sent = await communityApi.sendDirectMessage(recipientId, text);
+      if (sent) {
+        setMessages((prev) => [...prev, sent]);
         setNewMessageText('');
         if (socketRef.current) {
           socketRef.current.emit('community:send_message', {
             recipientId,
-            message: res.data.data,
+            message: sent,
           });
         }
       }

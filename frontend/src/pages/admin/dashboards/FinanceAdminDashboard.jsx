@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { adminApi } from '../../../api/adminApi';
 import { 
   IndianRupee, 
   TrendingUp, 
@@ -23,29 +23,26 @@ import { NotificationToast } from '../../../components/common/NotificationToast'
 export function FinanceAdminDashboard() {
   const [batches, setBatches] = useState([]);
   const [metrics, setMetrics] = useState({
-    totalDisbursedAmount: 1845000,
-    completedDisbursementsCount: 842,
-    pendingAuthorizationAmount: 248000,
-    pendingBatchesCount: 3,
-    settlementSuccessRate: '99.4%'
+    totalDisbursedAmount: 0,
+    completedDisbursementsCount: 0,
+    pendingAuthorizationAmount: 0,
+    pendingBatchesCount: 0,
+    settlementSuccessRate: '0.0%'
   });
   const [loading, setLoading] = useState(true);
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [toast, setToast] = useState(null);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-  const token = sessionStorage.getItem('vlt_master_token');
-
   const fetchFinanceData = async () => {
     setLoading(true);
     try {
-      const [batchesRes, metricsRes] = await Promise.all([
-        axios.get(`${API_URL}/finance/batches`, { headers: token ? { 'x-auth-token': token } : {} }),
-        axios.get(`${API_URL}/finance/metrics`, { headers: token ? { 'x-auth-token': token } : {} })
+      const [batchesData, metricsData] = await Promise.all([
+        adminApi.getFinanceBatches(),
+        adminApi.getFinanceMetrics(),
       ]);
 
-      if (batchesRes.data?.data && Array.isArray(batchesRes.data.data)) {
-        const mapped = batchesRes.data.data.map(b => ({
+      if (Array.isArray(batchesData)) {
+        const mapped = batchesData.map((b) => ({
           id: b.id,
           batchId: b.batchReference || `BATCH-${b.id.slice(-6).toUpperCase()}`,
           date: new Date(b.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
@@ -60,11 +57,12 @@ export function FinanceAdminDashboard() {
         setBatches([]);
       }
 
-      if (metricsRes.data?.data) {
-        setMetrics(metricsRes.data.data);
+      if (metricsData) {
+        setMetrics(metricsData);
       }
     } catch (err) {
       console.warn('Error fetching live finance data:', err);
+      setToast({ title: 'Error', message: err.message || 'Unable to load finance data', type: 'error' });
     } finally {
       setLoading(false);
     }
@@ -76,13 +74,9 @@ export function FinanceAdminDashboard() {
 
   const handleAuthorizeBatch = async (batchItem) => {
     try {
-      await axios.patch(
-        `${API_URL}/finance/batches/${batchItem.id || batchItem.batchId}/authorize`,
-        { status: 'approved' },
-        { headers: token ? { 'x-auth-token': token } : {} }
-      );
-      setBatches(prev =>
-        prev.map(b => (b.batchId === batchItem.batchId ? { ...b, status: 'approved' } : b))
+      await adminApi.authorizeBatch(batchItem.id || batchItem.batchId, 'approved');
+      setBatches((prev) =>
+        prev.map((b) => (b.batchId === batchItem.batchId ? { ...b, status: 'approved' } : b))
       );
       setSelectedBatch(null);
       setToast({
@@ -94,7 +88,7 @@ export function FinanceAdminDashboard() {
     } catch (err) {
       setToast({
         title: 'Authorization Error',
-        message: err.response?.data?.message || 'Failed to authorize batch on backend',
+        message: err.message || 'Failed to authorize batch on backend',
         type: 'error'
       });
     }

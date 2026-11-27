@@ -11,9 +11,9 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import axios from 'axios';
+import { communityApi } from '../../api/communityApi';
 
-export function SecuritySettingsView({ userProfile, API_URL, theme = 'dark' }) {
+export function SecuritySettingsView({ userProfile, theme = 'dark' }) {
   const isDark = theme === 'dark';
 
   // Change Password State
@@ -27,7 +27,7 @@ export function SecuritySettingsView({ userProfile, API_URL, theme = 'dark' }) {
   const [changePwError, setChangePwError] = useState('');
 
   // Forgot / Reset Password State
-  const [forgotEmail, setForgotEmail] = useState(userProfile?.email || 'testuser@drivemate.com');
+  const [forgotEmail, setForgotEmail] = useState(userProfile?.email || '');
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotSuccess, setForgotSuccess] = useState('');
   const [forgotError, setForgotError] = useState('');
@@ -60,21 +60,14 @@ export function SecuritySettingsView({ userProfile, API_URL, theme = 'dark' }) {
     }
 
     setChangePwLoading(true);
-    const token = sessionStorage.getItem('dm_user_token');
 
     try {
-      await axios.post(
-        `${API_URL}/auth/change-password`,
-        {
-          currentPassword: changePwData.currentPassword,
-          newPassword: changePwData.newPassword,
-        },
-        {
-          headers: token ? { 'x-auth-token': token } : {},
-        }
-      );
+      await communityApi.changePassword({
+        currentPassword: changePwData.currentPassword,
+        newPassword: changePwData.newPassword,
+      });
 
-      setChangePwSuccess('Account password updated successfully! Synced across PostgreSQL and Firebase Auth.');
+      setChangePwSuccess('Account password updated successfully!');
       setChangePwData({
         currentPassword: '',
         newPassword: '',
@@ -83,7 +76,7 @@ export function SecuritySettingsView({ userProfile, API_URL, theme = 'dark' }) {
       setTimeout(() => setChangePwSuccess(''), 5000);
     } catch (err) {
       console.error('Change password error:', err);
-      setChangePwError(err.response?.data?.message || 'Failed to update password. Please check your current password.');
+      setChangePwError(err.message || 'Failed to update password. Please check your current password.');
     } finally {
       setChangePwLoading(false);
     }
@@ -105,21 +98,19 @@ export function SecuritySettingsView({ userProfile, API_URL, theme = 'dark' }) {
     setForgotLoading(true);
 
     try {
-      const res = await axios.post(`${API_URL}/auth/forgot-password`, {
-        email: forgotEmail.trim(),
-      });
+      const data = await communityApi.forgotPassword(forgotEmail.trim());
 
-      setForgotSuccess(res.data?.message || 'Password reset instructions dispatched via Firebase Auth.');
-      if (res.data?.data?.actionUrl) {
-        setResetActionUrl(res.data.data.actionUrl);
+      setForgotSuccess('Password reset instructions dispatched.');
+      if (data?.actionUrl) {
+        setResetActionUrl(data.actionUrl);
       }
-      if (res.data?.data?.devResetOtp) {
-        setDevResetOtp(res.data.data.devResetOtp);
-        setOtpResetData((prev) => ({ ...prev, otp: res.data.data.devResetOtp }));
+      if (data?.devResetOtp) {
+        setDevResetOtp(data.devResetOtp);
+        setOtpResetData((prev) => ({ ...prev, otp: data.devResetOtp }));
       }
     } catch (err) {
       console.error('Forgot password error:', err);
-      setForgotError(err.response?.data?.message || 'Failed to trigger password reset.');
+      setForgotError(err.message || 'Failed to trigger password reset.');
     } finally {
       setForgotLoading(false);
     }
@@ -143,7 +134,7 @@ export function SecuritySettingsView({ userProfile, API_URL, theme = 'dark' }) {
     setOtpResetLoading(true);
 
     try {
-      await axios.post(`${API_URL}/auth/reset-password`, {
+      await communityApi.resetPassword({
         email: forgotEmail.trim(),
         otp: otpResetData.otp.trim(),
         newPassword: otpResetData.newPassword,
@@ -154,7 +145,7 @@ export function SecuritySettingsView({ userProfile, API_URL, theme = 'dark' }) {
       setTimeout(() => setOtpResetSuccess(''), 5000);
     } catch (err) {
       console.error('Reset password error:', err);
-      setOtpResetError(err.response?.data?.message || 'Invalid or expired OTP code.');
+      setOtpResetError(err.message || 'Invalid or expired OTP code.');
     } finally {
       setOtpResetLoading(false);
     }

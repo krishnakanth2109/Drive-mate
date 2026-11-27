@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { adminApi } from '../../../api/adminApi';
 import { 
   IndianRupee, 
   ArrowUpRight, 
@@ -23,26 +23,15 @@ export function FinancePayoutsView() {
 
   const fetchTransactions = async () => {
     setLoading(true);
-    const token = sessionStorage.getItem('vlt_master_token');
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-
     try {
-      const res = await axios.get(`${API_URL}/finance/ledger`, {
-        headers: token ? { 'x-auth-token': token } : {}
-      });
-      if (res.data?.data) {
-        setTransactions(res.data.data);
-      } else {
-        setTransactions([]);
-      }
+      const data = await adminApi.getFinancialLedger();
+      setTransactions(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.warn('Finance ledger endpoint error, trying disbursements fallback:', err);
+      console.warn('Finance ledger endpoint error, trying disbursements:', err);
       try {
-        const fallbackRes = await axios.get(`${API_URL}/finance/disbursements`, {
-          headers: token ? { 'x-auth-token': token } : {}
-        });
-        if (fallbackRes.data?.data) {
-          const mapped = fallbackRes.data.data.map(d => ({
+        const disbursements = await adminApi.getDisbursements();
+        if (Array.isArray(disbursements)) {
+          const mapped = disbursements.map((d) => ({
             id: `TXN-${d.id.slice(-6).toUpperCase()}`,
             user: d.driverName || 'Driver Partner',
             userType: 'Rider',
@@ -58,7 +47,7 @@ export function FinancePayoutsView() {
         } else {
           setTransactions([]);
         }
-      } catch (fallbackErr) {
+      } catch {
         setTransactions([]);
       }
     } finally {

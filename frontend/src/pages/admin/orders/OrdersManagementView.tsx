@@ -17,28 +17,31 @@ import {
 import { DataTable, Column } from '../../../components/common/DataTable';
 import { StatusBadge } from '../../../components/common/StatusBadge';
 import { Modal } from '../../../components/common/Modal';
-import { fetchApi } from '../../../api/client';
+import { adminApi } from '../../../api/adminApi';
 
 export function OrdersManagementView() {
   const [orders, setOrders] = useState<any[]>([]);
   const [metrics, setMetrics] = useState<any>({});
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
 
   const loadOrders = async () => {
     try {
       setLoading(true);
-      const params = new URLSearchParams();
-      if (selectedStatus && selectedStatus !== 'all') params.set('status', selectedStatus);
+      setError(null);
+      const params: Record<string, string> = {};
+      if (selectedStatus && selectedStatus !== 'all') params.status = selectedStatus;
 
-      const res = await fetchApi(`/admin/orders?${params.toString()}`);
+      const res = await adminApi.getOrders(params);
       if (res) {
         setOrders(res.orders || []);
         if (res.statusMetrics) setMetrics(res.statusMetrics);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load orders:', err);
+      setError(err?.message || 'Failed to load orders');
     } finally {
       setLoading(false);
     }

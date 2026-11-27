@@ -1,22 +1,36 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, RefreshControl, Modal, TextInput } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  RefreshControl,
+  Modal,
+  TextInput,
+  ActivityIndicator,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { riderService } from '../../services/riderService';
 import { RiderDocument } from '../../services/types';
+import { extractApiErrorMessage } from '../../services/api';
 
 export default function DocumentsScreen({ navigation }: any) {
   const [docs, setDocs] = useState<RiderDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [selectedDoc, setSelectedDoc] = useState<RiderDocument | null>(null);
   const [docNumber, setDocNumber] = useState('');
 
   const fetchDocs = useCallback(async () => {
     try {
+      setError(null);
       const data = await riderService.getDocuments();
-      setDocs(data);
-    } catch (err) {
-      console.log('Failed to fetch documents:', err);
+      setDocs(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      setError(extractApiErrorMessage(err, 'Unable to load verification documents.'));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -85,28 +99,54 @@ export default function DocumentsScreen({ navigation }: any) {
       </View>
 
       <View style={styles.list}>
-        {docs.map(doc => {
-          const color = getStatusColor(doc.status);
-          const icon = getStatusIcon(doc.status);
-          return (
-            <TouchableOpacity key={doc.id} style={styles.docCard} onPress={() => handleOpenDoc(doc)}>
-              <View style={styles.docLeft}>
-                <Ionicons name="document-outline" size={24} color="#555" style={{ marginRight: 12 }} />
-                <View>
-                  <Text style={styles.docTitle}>{doc.title}</Text>
-                  {doc.documentNumber ? (
-                    <Text style={styles.docSub}>{doc.documentNumber}</Text>
-                  ) : null}
-                  <View style={styles.statusRow}>
-                    <Ionicons name={icon as any} size={14} color={color} />
-                    <Text style={[styles.docStatus, { color }]}>{doc.status}</Text>
+        {loading && !refreshing ? (
+          <ActivityIndicator size="large" color="#3b5998" style={{ marginTop: 32 }} />
+        ) : error ? (
+          <View style={{ backgroundColor: '#fef2f2', padding: 16, borderRadius: 12, alignItems: 'center' }}>
+            <Text style={{ color: '#b91c1c', marginBottom: 8 }}>{error}</Text>
+            <TouchableOpacity onPress={fetchDocs}>
+              <Text style={{ color: '#f72585', fontWeight: '700' }}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        ) : docs.length === 0 ? (
+          <View style={{ backgroundColor: '#fff', padding: 24, borderRadius: 14, alignItems: 'center' }}>
+            <Ionicons name="folder-open-outline" size={44} color="#94a3b8" />
+            <Text style={{ fontSize: 16, fontWeight: '700', color: '#1a1a2e', marginTop: 10 }}>
+              No Documents Uploaded Yet
+            </Text>
+            <Text style={{ fontSize: 13, color: '#64748b', textAlign: 'center', marginTop: 6 }}>
+              Use the 7-Step Driver Onboarding Wizard above to upload your DL, Aadhaar, PAN, and Vehicle RC.
+            </Text>
+          </View>
+        ) : (
+          docs.map((doc) => {
+            const color = getStatusColor(doc.status);
+            const icon = getStatusIcon(doc.status);
+            return (
+              <TouchableOpacity key={doc.id} style={styles.docCard} onPress={() => handleOpenDoc(doc)}>
+                <View style={styles.docLeft}>
+                  <Ionicons name="document-outline" size={24} color="#555" style={{ marginRight: 12 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.docTitle}>{doc.title}</Text>
+                    {doc.documentNumber ? (
+                      <Text style={styles.docSub}>{doc.documentNumber}</Text>
+                    ) : null}
+                    {doc.expiryDate ? (
+                      <Text style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                        Expires: {new Date(doc.expiryDate).toLocaleDateString('en-IN')}
+                      </Text>
+                    ) : null}
+                    <View style={styles.statusRow}>
+                      <Ionicons name={icon as any} size={14} color={color} />
+                      <Text style={[styles.docStatus, { color }]}>{doc.status}</Text>
+                    </View>
                   </View>
                 </View>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#ccc" />
-            </TouchableOpacity>
-          );
-        })}
+                <Ionicons name="chevron-forward" size={20} color="#ccc" />
+              </TouchableOpacity>
+            );
+          })
+        )}
       </View>
 
       {/* Document Edit Modal */}

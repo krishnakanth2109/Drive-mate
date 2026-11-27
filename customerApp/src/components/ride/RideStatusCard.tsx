@@ -4,41 +4,52 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 
 type RideStatusCardProps = {
-  status: 'searching' | 'arriving' | 'arrived' | 'on_trip';
+  status: 'searching' | 'arriving' | 'arrived' | 'on_trip' | 'drop_arrived';
   etaMinutes?: number;
   message?: string;
 };
 import RideSidebarOptions from './RideSidebarOptions';
+import { useCustomer } from '../../context/CustomerContext';
 
 export default function RideStatusCard({ status, etaMinutes, message }: RideStatusCardProps) {
   const [isSidebarVisible, setSidebarVisible] = useState(false);
   const navigation = useNavigation<any>();
+  const { activeRide, driver } = useCustomer();
   
   const getStatusConfig = () => {
     switch(status) {
       case 'searching':
         return { title: 'Finding your ride...', color: '#666', icon: 'search' };
       case 'arriving':
-        return { title: 'Driver is arriving', color: '#f72585', icon: 'car-sport' };
+        return { title: 'Driver approaching pickup', color: '#f72585', icon: 'car-sport' };
       case 'arrived':
-        return { title: 'Driver has arrived', color: '#4CAF50', icon: 'checkmark-circle' };
+        return { title: 'Driver has arrived', color: '#10b981', icon: 'checkmark-circle' };
       case 'on_trip':
-        return { title: 'On trip to destination', color: '#333', icon: 'navigate' };
+        return { title: 'Ride in progress', color: '#2563eb', icon: 'navigate' };
+      case 'drop_arrived':
+        return { title: 'Driver has reached destination', color: '#10b981', icon: 'flag' };
     }
   };
 
   const config = getStatusConfig();
 
   const handleOptionSelect = async (option: string) => {
+    const driverPhone = driver?.phone || (activeRide as any)?.rider?.phone;
+    const rideId = activeRide?._id || (activeRide as any)?.id || '';
+
     switch(option) {
       case 'contact':
-        // Dummy driver number, replace with real data
-        Linking.openURL('tel:+1234567890');
+        if (!driverPhone) {
+          Alert.alert('Not Available', 'Driver phone number will appear once a driver accepts.');
+          return;
+        }
+        Linking.openURL(`tel:${driverPhone}`);
         break;
       case 'share':
         try {
+          const dropAddr = activeRide?.drop?.address || (activeRide as any)?.dropAddress || 'my destination';
           await Share.share({
-            message: 'Track my DriveMate ride here: https://drivemate.com/track/12345',
+            message: `I am on a DriveMate trip${rideId ? ` (#${String(rideId).slice(-6).toUpperCase()})` : ''} heading to ${dropAddr}.`,
           });
         } catch (error) {
           console.error(error);

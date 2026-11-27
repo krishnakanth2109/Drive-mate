@@ -23,9 +23,9 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import axios from 'axios';
 import { Navbar } from '../components/Navbar';
 import { signInWithGoogle } from '../config/firebase';
+import { communityApi } from '../api/communityApi';
 
 export function RegisterPage() {
   const navigate = useNavigate();
@@ -64,8 +64,6 @@ export function RegisterPage() {
   const [error, setError] = useState('');
   const [resendTimer, setResendTimer] = useState(0);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-
   const handleGoogleRegister = async () => {
     setGoogleLoading(true);
     setError('');
@@ -78,24 +76,18 @@ export function RegisterPage() {
         return;
       }
 
-      const res = await axios.post(`${API_URL}/auth/google`, {
-        idToken: fbRes.idToken,
-        email: fbRes.user?.email,
-        displayName: fbRes.user?.displayName,
-        photoUrl: fbRes.user?.photoURL,
-        uid: fbRes.user?.uid,
-      });
+      const data = await communityApi.googleLogin(fbRes.idToken);
 
-      if (res.data?.data?.token) {
-        sessionStorage.setItem('dm_user_token', res.data.data.token);
-        sessionStorage.setItem('dm_user_profile', JSON.stringify(res.data.data.user));
+      if (data?.token) {
+        sessionStorage.setItem('dm_user_token', data.token);
+        sessionStorage.setItem('dm_user_profile', JSON.stringify(data.user));
         navigate('/dashboard');
       } else {
         setError('Google sign-in succeeded, but token could not be issued.');
       }
     } catch (err) {
       console.error('Google register error:', err);
-      setError(err.response?.data?.message || err.message || 'Google registration failed.');
+      setError(err.message || 'Google registration failed.');
     } finally {
       setGoogleLoading(false);
     }
@@ -182,30 +174,26 @@ export function RegisterPage() {
     setError('');
 
     try {
-      const res = await axios.post(`${API_URL}/auth/register/send-otp`, {
+      const data = await communityApi.sendRegisterOtp({
         email: formData.email.trim(),
         firstName: formData.firstName.trim(),
       });
 
       setOtpSent(true);
       setResendTimer(60);
-      if (res.data?.data?.devOtp) {
-        setDevOtp(res.data.data.devOtp);
-        // Auto-fill input immediately for seamless developer and user testing
-        setFormData((prev) => ({ ...prev, otp: res.data.data.devOtp }));
+      if (data?.devOtp) {
+        setDevOtp(data.devOtp);
+        setFormData((prev) => ({ ...prev, otp: data.devOtp }));
       }
-      if (res.data?.data?.previewUrl) {
-        setPreviewUrl(res.data.data.previewUrl);
+      if (data?.previewUrl) {
+        setPreviewUrl(data.previewUrl);
       }
-      if (res.data?.data?.isSandbox) {
+      if (data?.isSandbox) {
         setIsSandbox(true);
       }
     } catch (err) {
       console.error('OTP Send error:', err);
-      // Fallback dev OTP so user is never blocked
-      setDevOtp('123456');
-      setFormData((prev) => ({ ...prev, otp: '123456' }));
-      setError(err.response?.data?.message || 'Email delivery notice: Use test OTP 123456 to continue.');
+      setError(err.message || 'Failed to send verification OTP. Please check your email and retry.');
     } finally {
       setLoading(false);
     }
@@ -248,7 +236,7 @@ export function RegisterPage() {
     setError('');
 
     try {
-      const res = await axios.post(`${API_URL}/auth/register/verify-and-register`, {
+      const data = await communityApi.verifyAndRegister({
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
         email: formData.email.trim(),
@@ -260,21 +248,19 @@ export function RegisterPage() {
         purpose: formData.purpose,
         agreedTerms: formData.agreedTerms,
         otp: formData.otp.trim(),
-        password: formData.password || 'DriveMate@2026',
+        password: formData.password,
       });
 
-      if (res.data?.data?.token) {
-        // Save token in sessionStorage
-        sessionStorage.setItem('dm_user_token', res.data.data.token);
-        sessionStorage.setItem('dm_user_profile', JSON.stringify(res.data.data.user));
-
+      if (data?.token) {
+        sessionStorage.setItem('dm_user_token', data.token);
+        sessionStorage.setItem('dm_user_profile', JSON.stringify(data.user));
         navigate('/dashboard');
       } else {
         setError('Verification succeeded but session token was not received.');
       }
     } catch (err) {
       console.error('Registration error:', err);
-      setError(err.response?.data?.message || 'Invalid or expired OTP. Please try again.');
+      setError(err.message || 'Invalid or expired OTP. Please try again.');
     } finally {
       setLoading(false);
     }

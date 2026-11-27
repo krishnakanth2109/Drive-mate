@@ -13,7 +13,7 @@ import {
   Layers
 } from 'lucide-react';
 import { Modal } from '../../../components/common/Modal';
-import { fetchApi } from '../../../api/client';
+import { adminApi } from '../../../api/adminApi';
 import { useRole } from '../../../context/RoleContext';
 
 export function RolesPermissionsManager() {
@@ -21,6 +21,7 @@ export function RolesPermissionsManager() {
   const [roles, setRoles] = useState<any[]>([]);
   const [permissions, setPermissions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Modal States
   const [isCreateRoleOpen, setIsCreateRoleOpen] = useState(false);
@@ -44,15 +45,17 @@ export function RolesPermissionsManager() {
   const loadData = async () => {
     try {
       setLoading(true);
+      setError(null);
       const [rolesData, permsData] = await Promise.all([
-        fetchApi('/rbac/roles').catch(() => []),
-        fetchApi('/rbac/permissions').catch(() => []),
+        adminApi.getRoles(),
+        adminApi.getPermissionsCatalog(),
       ]);
 
       setRoles(Array.isArray(rolesData) ? rolesData : []);
       setPermissions(Array.isArray(permsData) ? permsData : []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load RBAC data:', err);
+      setError(err?.message || 'Failed to load RBAC configuration');
     } finally {
       setLoading(false);
     }
@@ -66,15 +69,12 @@ export function RolesPermissionsManager() {
     e.preventDefault();
     try {
       setSubmitting(true);
-      await fetchApi('/rbac/roles', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: roleName.trim(),
-          code: roleCode.trim().toUpperCase(),
-          description: roleDescription,
-          accessScope: roleScope,
-          permissions: selectedPermissions,
-        }),
+      await adminApi.createRole({
+        name: roleName.trim(),
+        code: roleCode.trim().toUpperCase(),
+        description: roleDescription,
+        accessScope: roleScope,
+        permissions: selectedPermissions,
       });
 
       alert('Role created successfully!');

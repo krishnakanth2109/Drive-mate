@@ -13,9 +13,9 @@ import {
   KeyRound
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import axios from 'axios';
 import { Navbar } from '../components/Navbar';
 import { signInWithGoogle } from '../config/firebase';
+import { communityApi } from '../api/communityApi';
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -25,12 +25,14 @@ export function LoginPage() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-
   const handleLogin = async (e) => {
     e?.preventDefault();
     if (!emailOrPhone.trim()) {
       setError('Please enter your email or phone number.');
+      return;
+    }
+    if (!password) {
+      setError('Please enter your password.');
       return;
     }
 
@@ -38,24 +40,21 @@ export function LoginPage() {
     setError('');
 
     try {
-      const res = await axios.post(`${API_URL}/auth/login`, {
+      const data = await communityApi.login({
         email: emailOrPhone.trim(),
-        password: password || 'Password@123',
+        password,
       });
 
-      if (res.data?.data?.token) {
-        // Save token in sessionStorage
-        sessionStorage.setItem('dm_user_token', res.data.data.token);
-        sessionStorage.setItem('dm_user_profile', JSON.stringify(res.data.data.user));
-        
+      if (data?.token) {
+        sessionStorage.setItem('dm_user_token', data.token);
+        sessionStorage.setItem('dm_user_profile', JSON.stringify(data.user));
         navigate('/dashboard');
       } else {
         setError('Login failed. Please check your credentials.');
       }
     } catch (err) {
       console.error('Login error:', err);
-      const msg = err.response?.data?.message || 'Login failed. Please check your credentials or register a new account.';
-      setError(msg);
+      setError(err.message || 'Login failed. Please check your credentials or register a new account.');
     } finally {
       setLoading(false);
     }
@@ -73,34 +72,21 @@ export function LoginPage() {
         return;
       }
 
-      // Sync with backend using Firebase token
-      const res = await axios.post(`${API_URL}/auth/google`, {
-        idToken: fbRes.idToken,
-        email: fbRes.user?.email,
-        displayName: fbRes.user?.displayName,
-        photoUrl: fbRes.user?.photoURL,
-        uid: fbRes.user?.uid,
-      });
+      const data = await communityApi.googleLogin(fbRes.idToken);
 
-      if (res.data?.data?.token) {
-        sessionStorage.setItem('dm_user_token', res.data.data.token);
-        sessionStorage.setItem('dm_user_profile', JSON.stringify(res.data.data.user));
+      if (data?.token) {
+        sessionStorage.setItem('dm_user_token', data.token);
+        sessionStorage.setItem('dm_user_profile', JSON.stringify(data.user));
         navigate('/dashboard');
       } else {
         setError('Google authentication succeeded, but failed to retrieve session token.');
       }
     } catch (err) {
       console.error('Google login error:', err);
-      setError(err.response?.data?.message || err.message || 'Google login failed.');
+      setError(err.message || 'Google login failed.');
     } finally {
       setGoogleLoading(false);
     }
-  };
-
-  const handleAutofillTestUser = () => {
-    setEmailOrPhone('testuser@drivemate.com');
-    setPassword('Password@123');
-    setError('');
   };
 
   return (
@@ -252,37 +238,6 @@ export function LoginPage() {
                 )}
               </motion.button>
             </form>
-
-            {/* Test User Credentials Box */}
-            <div className="mt-5 p-4 rounded-2xl bg-cyan-950/30 border border-[#38c6ec]/20 text-xs">
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-semibold text-white flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-[#38c6ec]" />
-                  Verified Test Commuter Credentials
-                </span>
-                <span className="text-[10px] bg-[#38c6ec]/20 text-[#38c6ec] px-2 py-0.5 rounded-full font-mono">
-                  Ready
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-400 mb-3 bg-black/30 p-2.5 rounded-xl border border-white/5 font-mono">
-                <div>
-                  <span className="text-slate-500 block text-[10px]">Email:</span>
-                  <span className="text-white">testuser@drivemate.com</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block text-[10px]">Password:</span>
-                  <span className="text-[#38c6ec]">Password@123</span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={handleAutofillTestUser}
-                className="w-full text-center py-2 px-3 rounded-xl bg-[#38c6ec]/10 hover:bg-[#38c6ec]/20 border border-[#38c6ec]/30 text-[#38c6ec] font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                1-Click Autofill Test Credentials
-              </button>
-            </div>
 
             {/* Register Callout */}
             <div className="mt-6 pt-5 border-t border-white/10 text-center">

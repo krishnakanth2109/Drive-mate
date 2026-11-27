@@ -19,8 +19,8 @@ import { useRider } from '../../context/RiderContext';
 export default function ChatScreen({ route }: any) {
   const navigation = useNavigation<any>();
   const { activeRide } = useRider();
-  const customerName = route?.params?.customerName || 'Customer';
-  const customerPhone = route?.params?.customerPhone || '+1234567890';
+  const customerName = route?.params?.customerName || activeRide?.customer?.name || 'Customer';
+  const customerPhone = route?.params?.customerPhone || activeRide?.customer?.phone || '';
   
   const [messages, setMessages] = useState<any[]>([]);
   const [inputText, setInputText] = useState('');
@@ -36,6 +36,9 @@ export default function ChatScreen({ route }: any) {
   }, []);
 
   const handleCall = () => {
+    if (!customerPhone) {
+      return;
+    }
     Linking.openURL(`tel:${customerPhone}`);
   };
 

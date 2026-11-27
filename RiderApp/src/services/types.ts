@@ -21,9 +21,15 @@ export interface Ride {
   pickup: LocationData;
   drop: LocationData;
   fare: number;
+  baseFare?: number;
+  surgeMultiplier?: number;
+  surgeAmount?: number;
+  surgeReason?: string;
+  trafficLevel?: string;
+  demandLevel?: string;
   distance: number;
   duration: number;
-  status: 'pending' | 'accepted' | 'arrived' | 'ongoing' | 'completed' | 'cancelled';
+  status: 'pending' | 'accepted' | 'arrived' | 'ongoing' | 'drop_arrived' | 'completed' | 'cancelled';
   otp: string;
   polyline: string;
   vehicleType?: string;
@@ -48,10 +54,46 @@ export interface VehicleInfo {
 
 export interface RiderDocument {
   id: string;
+  documentType?: string;
   title: string;
-  status: 'Approved' | 'Pending Review' | 'Required';
+  status: 'Approved' | 'Pending Review' | 'Rejected' | 'Required';
   documentNumber?: string;
-  verifiedAt?: string;
+  frontImageUrl?: string | null;
+  backImageUrl?: string | null;
+  expiryDate?: string | null;
+  verifiedAt?: string | null;
+  rejectionReason?: string | null;
+}
+
+export interface RiderPerformanceBadge {
+  id: string;
+  name: string;
+  desc: string;
+  unlocked: boolean;
+  current: number;
+  target: number;
+  color: string;
+  icon: string;
+}
+
+export interface RiderPerformanceDay {
+  day: string;
+  date: string;
+  rides: number;
+  earnings: number;
+}
+
+export interface RiderPerformanceData {
+  rating: number;
+  totalCompletedRides: number;
+  driverCancelledRides: number;
+  completionRate: number;
+  acceptanceRate: number;
+  safetyCompliance: number;
+  totalWeeklyRides: number;
+  totalWeeklyEarnings: number;
+  weeklyActivity: RiderPerformanceDay[];
+  badges: RiderPerformanceBadge[];
 }
 
 export interface RiderPreferences {

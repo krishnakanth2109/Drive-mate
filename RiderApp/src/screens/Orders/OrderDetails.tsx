@@ -27,13 +27,13 @@ export default function OrderDetailsScreen({ navigation, route }: any) {
         hour: '2-digit',
         minute: '2-digit',
       })
-    : 'Today, 10:30 AM';
+    : '';
 
   const isCompleted = ride?.status === 'completed';
-  const fare = ride?.fare || 500;
-  const distance = ride?.distance ? `${ride.distance} km` : '15 km';
-  const duration = ride?.duration ? `${ride.duration} mins` : '35 mins';
-  const waitCharges = ride?.waitCharges || 0;
+  const fare = Number(ride?.fare ?? 0);
+  const distance = ride?.distance ? `${ride.distance} km` : '0 km';
+  const duration = ride?.duration ? `${ride.duration} mins` : '0 mins';
+  const waitCharges = Number(ride?.waitCharges ?? 0);
 
   return (
     <View style={styles.container}>
@@ -41,7 +41,9 @@ export default function OrderDetailsScreen({ navigation, route }: any) {
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Order #{ride?._id ? ride._id.slice(-6).toUpperCase() : '8942'}</Text>
+        <Text style={styles.headerTitle}>
+          Order {ride?._id ? `#${ride._id.slice(-6).toUpperCase()}` : ''}
+        </Text>
         <View style={{ width: 40 }} />
       </View>
 

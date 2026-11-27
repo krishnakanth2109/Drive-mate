@@ -3,18 +3,21 @@ import { View, Text, StyleSheet, ScrollView, RefreshControl, ActivityIndicator, 
 import { Ionicons } from '@expo/vector-icons';
 import { riderService } from '../../services/riderService';
 import { RiderOffer } from '../../services/types';
+import { extractApiErrorMessage } from '../../services/api';
 
 export default function OffersScreen() {
   const [offers, setOffers] = useState<RiderOffer[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchOffers = useCallback(async () => {
     try {
+      setError(null);
       const data = await riderService.getOffers();
-      setOffers(data);
-    } catch (err) {
-      console.log('Failed to fetch offers:', err);
+      setOffers(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      setError(extractApiErrorMessage(err, 'Unable to load offers.'));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -38,8 +41,25 @@ export default function OffersScreen() {
     >
       <Text style={styles.headerTitle}>Driver Offers & Incentives</Text>
       
-      {loading ? (
+      {loading && !refreshing ? (
         <ActivityIndicator size="large" color="#f72585" style={{ marginTop: 40 }} />
+      ) : error ? (
+        <View style={[styles.card, { alignItems: 'center' }]}>
+          <Text style={{ color: '#b91c1c', marginBottom: 8 }}>{error}</Text>
+          <TouchableOpacity onPress={fetchOffers}>
+            <Text style={{ color: '#f72585', fontWeight: '700' }}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : offers.length === 0 ? (
+        <View style={[styles.card, { alignItems: 'center', paddingVertical: 32 }]}>
+          <Ionicons name="gift-outline" size={44} color="#94a3b8" />
+          <Text style={{ fontSize: 16, fontWeight: '700', color: '#1a1a2e', marginTop: 10 }}>
+            No Active Offers
+          </Text>
+          <Text style={{ color: '#64748b', textAlign: 'center', marginTop: 4 }}>
+            New driver bonus campaigns and offers will appear here when published.
+          </Text>
+        </View>
       ) : (
         offers.map((offer, idx) => {
           const progressPercent = offer.target

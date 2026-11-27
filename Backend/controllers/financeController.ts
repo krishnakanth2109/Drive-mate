@@ -207,12 +207,13 @@ export const getRefundVouchers = asyncHandler(async (req: AuthenticatedRequest, 
  * Overview statistics for Finance Admin & Financers
  */
 export const getFinanceMetrics = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const [completedDisbursements, pendingBatches, activeVouchers] = await Promise.all([
+  const [completedDisbursements, totalDisbursementsCount, pendingBatches, activeVouchers] = await Promise.all([
     prisma.disbursement.aggregate({
       where: { status: 'completed' },
       _sum: { amount: true },
       _count: true,
     }),
+    prisma.disbursement.count(),
     prisma.payoutBatch.aggregate({
       where: { status: 'pending_authorization' },
       _sum: { totalAmount: true },
@@ -221,19 +222,22 @@ export const getFinanceMetrics = asyncHandler(async (req: AuthenticatedRequest, 
     prisma.refundVoucher.count(),
   ]);
 
-  const totalDisbursed = Number(completedDisbursements._sum.amount || 1845000);
-  const pendingBatchAmount = Number(pendingBatches._sum.totalAmount || 248000);
+  const totalDisbursed = Number(completedDisbursements._sum.amount || 0);
+  const pendingBatchAmount = Number(pendingBatches._sum.totalAmount || 0);
+  const successRate = totalDisbursementsCount > 0
+    ? `${((completedDisbursements._count / totalDisbursementsCount) * 100).toFixed(1)}%`
+    : '0.0%';
 
   res.status(200).json(
     new ApiResponse(
       200,
       {
         totalDisbursedAmount: totalDisbursed,
-        completedDisbursementsCount: completedDisbursements._count || 842,
+        completedDisbursementsCount: completedDisbursements._count,
         pendingAuthorizationAmount: pendingBatchAmount,
-        pendingBatchesCount: pendingBatches._count || 3,
-        activeRefundVouchersCount: activeVouchers || 18,
-        settlementSuccessRate: '99.4%',
+        pendingBatchesCount: pendingBatches._count,
+        activeRefundVouchersCount: activeVouchers,
+        settlementSuccessRate: successRate,
       },
       'Finance metrics fetched successfully'
     )

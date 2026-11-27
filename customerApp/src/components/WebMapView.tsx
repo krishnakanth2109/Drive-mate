@@ -29,6 +29,8 @@ interface Props {
   nearbyDrivers?: { [id: string]: Driver };
   onRegionChange?: (lat: number, lng: number) => void;
   isPinPicking?: boolean;
+  showTraffic?: boolean;
+  surgeMultiplier?: number;
   style?: any;
 }
 
@@ -42,6 +44,8 @@ export default function WebMapView({
   nearbyDrivers = {},
   onRegionChange,
   isPinPicking = false,
+  showTraffic = true,
+  surgeMultiplier = 1.0,
   style,
 }: Props) {
   const [useFallbackMap, setUseFallbackMap] = useState(!googleMapsKey);
@@ -125,6 +129,26 @@ ${isPinPicking ? '<div class="pin-center">📍</div>' : ''}
       });
     });
 
+    ${showTraffic ? `
+    if (google.maps.TrafficLayer) {
+      const trafficLayer = new google.maps.TrafficLayer();
+      trafficLayer.setMap(map);
+    }
+    ` : ''}
+
+    ${surgeMultiplier > 1.04 ? `
+    new google.maps.Circle({
+      strokeColor: '#f72585',
+      strokeOpacity: 0.35,
+      strokeWeight: 1.5,
+      fillColor: '#f72585',
+      fillOpacity: 0.08,
+      map,
+      center,
+      radius: 900,
+    });
+    ` : ''}
+
     const route = ${routeJson};
     if (route.length > 1) {
       const poly = new google.maps.Polyline({
@@ -137,7 +161,7 @@ ${isPinPicking ? '<div class="pin-center">📍</div>' : ''}
       });
       const bounds = new google.maps.LatLngBounds();
       route.forEach(p => bounds.extend({ lat: p.latitude, lng: p.longitude }));
-      map.fitBounds(bounds, { top: 90, right: 40, bottom: 280, left: 40 });
+      map.fitBounds(bounds, { top: 120, right: 40, bottom: 340, left: 40 });
     }
 
     const driver = ${driverJson};
@@ -198,12 +222,27 @@ ${isPinPicking ? '<div class="pin-center">📍</div>' : ''}
 <script>
   const map = L.map('map', { zoomControl:false, attributionControl:false })
     .setView([${safeLat}, ${safeLng}], ${zoom});
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19 }).addTo(map);
+  const voyagerLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom:19 });
+  voyagerLayer.on('tileerror', () => {
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19 }).addTo(map);
+  });
+  voyagerLayer.addTo(map);
+
+  ${surgeMultiplier > 1.04 ? `
+  L.circle([${safeLat}, ${safeLng}], {
+    color: '#f72585',
+    weight: 1.5,
+    opacity: 0.45,
+    fillColor: '#f72585',
+    fillOpacity: 0.08,
+    radius: 850
+  }).addTo(map);
+  ` : ''}
 
   const userIcon = L.divIcon({
-    html:'<div style="width:16px;height:16px;border-radius:50%;background:#007AFF;border:3px solid white;box-shadow:0 0 10px rgba(0,122,255,0.7)"></div>',
-    iconSize:[16,16],
-    iconAnchor:[8,8],
+    html:'<div style="width:18px;height:18px;border-radius:50%;background:#4361ee;border:3px solid white;box-shadow:0 0 12px rgba(67,97,238,0.65)"></div>',
+    iconSize:[18,18],
+    iconAnchor:[9,9],
     className:''
   });
   L.marker([${safeLat}, ${safeLng}], { icon:userIcon }).addTo(map);
@@ -245,7 +284,7 @@ ${isPinPicking ? '<div class="pin-center">📍</div>' : ''}
   return (
     <View style={[styles.container, style]}>
       <WebView
-        key={`${useFallbackMap ? 'fallback' : googleMapsKey}-${markers.length}-${routeCoords.length}-${safeLat}-${safeLng}`}
+        key={`${useFallbackMap ? 'fallback' : googleMapsKey}-${showTraffic}-${surgeMultiplier.toFixed(1)}-${markers.length}-${routeCoords.length}-${safeLat}-${safeLng}`}
         source={{ html, baseUrl: 'https://localhost' }}
         originWhitelist={['*']}
         style={styles.webview}

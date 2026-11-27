@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
+import { adminApi } from '../../../api/adminApi';
 import { 
   Headphones, 
   AlertTriangle, 
@@ -29,8 +29,8 @@ export function SupportAgentDashboard() {
     urgentCount: 0,
     escalatedCount: 0,
     resolvedToday: 0,
-    avgFirstResponseMinutes: 4.8,
-    csatScore: 4.85
+    avgFirstResponseMinutes: 0,
+    csatScore: null
   });
   const [loading, setLoading] = useState(true);
   const [selectedTicket, setSelectedTicket] = useState(null);
@@ -38,48 +38,40 @@ export function SupportAgentDashboard() {
   const [replyText, setReplyText] = useState('');
   const [processing, setProcessing] = useState(false);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-  const token = sessionStorage.getItem('vlt_master_token');
-  const authHeader = token ? { headers: { 'x-auth-token': token } } : {};
-
   const fetchTicketsData = useCallback(async () => {
     setLoading(true);
     try {
-      const [ticketsRes, metricsRes] = await Promise.allSettled([
-        axios.get(`${API_URL}/support/tickets`, authHeader),
-        axios.get(`${API_URL}/support/metrics`, authHeader)
+      const [rawTickets, metricsData] = await Promise.all([
+        adminApi.getSupportTickets(),
+        adminApi.getSupportMetrics(),
       ]);
 
-      if (ticketsRes.status === 'fulfilled' && ticketsRes.value.data?.data) {
-        const raw = ticketsRes.value.data.data;
-        const mapped = (Array.isArray(raw) ? raw : []).map(t => ({
-          id: t.ticketNumber || (t.id ? `TCK-${t.id.slice(-4).toUpperCase()}` : 'TCK-8091'),
-          rawId: t.id,
-          user: t.userName || 'User',
-          userType: t.userType || 'Customer',
-          phone: t.userPhone || 'N/A',
-          rideId: t.rideId || (t.ride?.id ? `RD-${t.ride.id.slice(-4).toUpperCase()}` : 'RD-9021'),
-          category: t.category || 'Ride Inquiry',
-          subject: t.subject || 'Support Assistance',
-          priority: t.priority?.toLowerCase() || 'medium',
-          status: t.status?.replace('_', ' ')?.toLowerCase() || 'open',
-          time: t.createdAt ? new Date(t.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recent',
-          details: t.details || 'No additional details provided'
-        }));
-        setTickets(mapped);
-      } else {
-        setTickets([]);
-      }
+      const mapped = (Array.isArray(rawTickets) ? rawTickets : []).map((t) => ({
+        id: t.ticketNumber || (t.id ? `TCK-${t.id.slice(-4).toUpperCase()}` : 'TCK'),
+        rawId: t.id,
+        user: t.userName || 'User',
+        userType: t.userType || 'Customer',
+        phone: t.userPhone || 'N/A',
+        rideId: t.rideId || (t.ride?.id ? `RD-${t.ride.id.slice(-4).toUpperCase()}` : 'N/A'),
+        category: t.category || 'Ride Inquiry',
+        subject: t.subject || 'Support Assistance',
+        priority: t.priority?.toLowerCase() || 'medium',
+        status: t.status?.replace('_', ' ')?.toLowerCase() || 'open',
+        time: t.createdAt ? new Date(t.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+        details: t.details || 'No additional details provided'
+      }));
+      setTickets(mapped);
 
-      if (metricsRes.status === 'fulfilled' && metricsRes.value.data?.data) {
-        setMetrics(metricsRes.value.data.data);
+      if (metricsData) {
+        setMetrics(metricsData);
       }
     } catch (err) {
       console.error('Failed to load tickets:', err);
+      setToast({ title: 'Load Error', message: err.message || 'Unable to load support tickets.', type: 'error' });
     } finally {
       setLoading(false);
     }
-  }, [API_URL, token]);
+  }, []);
 
   useEffect(() => {
     fetchTicketsData();
@@ -89,24 +81,10 @@ export function SupportAgentDashboard() {
     const targetId = ticket.rawId || ticket.id;
     setProcessing(true);
     try {
-      await axios.patch(`${API_URL}/support/tickets/${targetId}`, {
-        status: 'resolved'
-      }, authHeader);
+      await adminApi.updateSupportTicket(targetId, { status: 'resolved' });
 
-      setTickets(prev =>
-        prev.map(t => (t.rawId === targetId || t.id === targetId ? { ...t, status: 'resolved' } : t))
-      );
-      setSelectedTicket(null);
-      setToast({
-        title: 'Ticket Resolved',
-        message: `Ticket ${ticket.id} marked as resolved and customer notified.`,
-        type: 'success'
-      });
-      fetchTicketsData();
-    } catch (err) {
-      console.error('Resolve ticket error:', err);
-      setTickets(prev =>
-        prev.map(t => (t.rawId === targetId || t.id === targetId ? { ...t, status: 'resolved' } : t))
+      setTickets((prev) =>
+        prev.map((t) => (t.rawId === targetId || t.id === targetId ? { ...t, status: 'resolved' } : t))
       );
       setSelectedTicket(null);
       setToast({
@@ -114,6 +92,10 @@ export function SupportAgentDashboard() {
         message: `Ticket ${ticket.id} marked as resolved.`,
         type: 'success'
       });
+      fetchTicketsData();
+    } catch (err) {
+      console.error('Resolve ticket error:', err);
+      setToast({ title: 'Update Failed', message: err.message || 'Could not resolve ticket.', type: 'error' });
     } finally {
       setProcessing(false);
     }
@@ -123,32 +105,24 @@ export function SupportAgentDashboard() {
     const targetId = ticket.rawId || ticket.id;
     setProcessing(true);
     try {
-      await axios.post(`${API_URL}/support/tickets/${targetId}/escalate`, {
+      await adminApi.escalateSupportTicket(targetId, {
         requestedAction: 'Supervisor Review & Compensation Approval',
         supervisorNotes: `Escalated by Support Agent: ${ticket.subject}`
-      }, authHeader);
+      });
 
-      setTickets(prev =>
-        prev.map(t => (t.rawId === targetId || t.id === targetId ? { ...t, status: 'escalated' } : t))
+      setTickets((prev) =>
+        prev.map((t) => (t.rawId === targetId || t.id === targetId ? { ...t, status: 'escalated' } : t))
       );
       setSelectedTicket(null);
       setToast({
         title: 'Escalated to Head of Support',
-        message: `Ticket ${ticket.id} forwarded to supervisor queue for high-priority review.`,
+        message: `Ticket ${ticket.id} forwarded to supervisor queue.`,
         type: 'warning'
       });
       fetchTicketsData();
     } catch (err) {
       console.error('Escalate error:', err);
-      setTickets(prev =>
-        prev.map(t => (t.rawId === targetId || t.id === targetId ? { ...t, status: 'escalated' } : t))
-      );
-      setSelectedTicket(null);
-      setToast({
-        title: 'Ticket Escalated',
-        message: `Ticket ${ticket.id} escalated to supervisor queue.`,
-        type: 'warning'
-      });
+      setToast({ title: 'Escalation Failed', message: err.message || 'Could not escalate ticket.', type: 'error' });
     } finally {
       setProcessing(false);
     }
@@ -159,27 +133,22 @@ export function SupportAgentDashboard() {
     const targetId = selectedTicket.rawId || selectedTicket.id;
     setProcessing(true);
     try {
-      await axios.post(`${API_URL}/support/tickets/${targetId}/messages`, {
+      await adminApi.addTicketMessage(targetId, {
         senderId: 'agent',
         senderName: 'Support Agent',
         senderType: 'Agent',
         message: replyText
-      }, authHeader);
+      });
 
       setToast({
         title: 'Message Dispatched',
-        message: `Response delivered to ${selectedTicket.user} via push and in-app message.`,
+        message: `Response saved and delivered for ${selectedTicket.user}.`,
         type: 'success'
       });
       setReplyText('');
     } catch (err) {
       console.error('Send message error:', err);
-      setToast({
-        title: 'Message Sent',
-        message: `Response saved for ticket ${selectedTicket.id}.`,
-        type: 'success'
-      });
-      setReplyText('');
+      setToast({ title: 'Reply Failed', message: err.message || 'Could not send message.', type: 'error' });
     } finally {
       setProcessing(false);
     }

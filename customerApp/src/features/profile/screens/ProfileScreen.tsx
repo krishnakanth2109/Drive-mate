@@ -1,31 +1,63 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Platform, Alert } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  SafeAreaView,
+  Platform,
+  Alert,
+  RefreshControl,
+  ActivityIndicator,
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useCustomer } from '../../../context/CustomerContext';
+import { profileService } from '../services/profileService';
 
 export default function MyAccountScreen({ navigation }: any) {
   const { logout, currentUser } = useCustomer();
-  const [userData, setUserData] = useState<{name: string, phone: string, email?: string} | null>(currentUser);
+  const [userData, setUserData] = useState<any>(currentUser);
+  const [balances, setBalances] = useState<{ walletBalance: number; coinBalance: number; powerPass: any } | null>(null);
+  const [rewards, setRewards] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [isDark, setIsDark] = useState(false);
 
-  useEffect(() => {
-    if (currentUser) {
-      setUserData(currentUser);
-    } else {
-      const fetchUser = async () => {
-        try {
-          const userStr = await AsyncStorage.getItem('user');
-          if (userStr) {
-            setUserData(JSON.parse(userStr));
-          }
-        } catch (err) {
-          console.error("Failed to load user data");
-        }
-      };
-      fetchUser();
+  const loadProfile = useCallback(async () => {
+    try {
+      const [meRes, balRes, rewardsRes] = await Promise.allSettled([
+        profileService.getMe(),
+        profileService.getBalances(),
+        profileService.getRewards(),
+      ]);
+
+      if (meRes.status === 'fulfilled' && meRes.value) {
+        setUserData(meRes.value);
+        await AsyncStorage.setItem('user', JSON.stringify(meRes.value));
+      } else {
+        const userStr = await AsyncStorage.getItem('user');
+        if (userStr) setUserData(JSON.parse(userStr));
+      }
+
+      if (balRes.status === 'fulfilled' && balRes.value) {
+        setBalances(balRes.value);
+      }
+      if (rewardsRes.status === 'fulfilled' && Array.isArray(rewardsRes.value)) {
+        setRewards(rewardsRes.value);
+      }
+    } catch (err) {
+      console.error('Failed to load profile data', err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-  }, [currentUser]);
+  }, []);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
 
   const handleLogout = () => {
     Alert.alert(
@@ -50,18 +82,32 @@ export default function MyAccountScreen({ navigation }: any) {
   ];
 
   const displayName = userData?.name || currentUser?.name || 'DriveMate Passenger';
-  const displayPhone = userData?.phone || currentUser?.phone || '+91 98845 22109';
+  const displayPhone = userData?.phone || currentUser?.phone || userData?.email || 'No contact on file';
   const displayInitial = (displayName || 'P')[0].toUpperCase();
+  const coinBalance = balances?.coinBalance ?? userData?.coinBalance ?? 0;
 
   return (
     <SafeAreaView style={[styles.safeArea, isDark && styles.safeAreaDark]}>
-      <ScrollView style={[styles.container, isDark && styles.containerDark]} contentContainerStyle={styles.scrollContent}>
-        
-        {/* Header */}
+      <ScrollView
+        style={[styles.container, isDark && styles.containerDark]}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              loadProfile();
+            }}
+            colors={['#f72585']}
+          />
+        }
+      >
         <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>Profile</Text>
 
-        {/* Profile Card */}
-        <TouchableOpacity style={[styles.profileCard, isDark && styles.profileCardDark]}>
+        <TouchableOpacity
+          style={[styles.profileCard, isDark && styles.profileCardDark]}
+          onPress={() => navigation.navigate('EditProfile')}
+        >
           <View style={styles.profileLeft}>
             <View style={styles.avatarContainer}>
               <Text style={{ fontSize: 20, fontWeight: '800', color: '#f72585' }}>{displayInitial}</Text>
@@ -69,56 +115,69 @@ export default function MyAccountScreen({ navigation }: any) {
             <View style={styles.profileInfo}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <Text style={[styles.profileName, isDark && styles.textDark]}>{displayName}</Text>
-                <Ionicons name="checkmark-circle" size={16} color="#06d6a0" />
+                {userData?.isEmailVerified ? <Ionicons name="checkmark-circle" size={16} color="#06d6a0" /> : null}
               </View>
-              <Text style={styles.profilePhone}>{displayPhone}</Text>
+              <Text style={styles.profilePhone}>{loading ? 'Loading profile...' : displayPhone}</Text>
               <Text style={{ fontSize: 11, color: '#f72585', fontWeight: '700', marginTop: 2 }}>
-                Verified Passenger • Level 2
+                {balances?.powerPass?.isActive ? `${balances.powerPass.planName} • ` : ''}
+                Wallet: ₹{Number(balances?.walletBalance ?? userData?.walletBalance ?? 0).toFixed(0)}
               </Text>
             </View>
           </View>
-          <Ionicons name="chevron-forward" size={20} color={isDark ? "#fff" : "#333"} />
+          {loading ? (
+            <ActivityIndicator size="small" color="#f72585" />
+          ) : (
+            <Ionicons name="chevron-forward" size={20} color={isDark ? '#fff' : '#333'} />
+          )}
         </TouchableOpacity>
 
-        {/* Theme Toggle */}
         <View style={[styles.themeCard, isDark && styles.themeCardDark]}>
           <Text style={[styles.themeTitle, isDark && styles.textDark]}>App Theme</Text>
           <View style={styles.themeOptions}>
-            <TouchableOpacity 
-              style={[styles.themeBtn, !isDark && styles.themeBtnActive]} 
+            <TouchableOpacity
+              style={[styles.themeBtn, !isDark && styles.themeBtnActive]}
               onPress={() => setIsDark(false)}
             >
-              <Ionicons name="sunny-outline" size={20} color={!isDark ? "#fff" : "#666"} />
+              <Ionicons name="sunny-outline" size={20} color={!isDark ? '#fff' : '#666'} />
               <Text style={[styles.themeBtnText, !isDark && styles.themeBtnTextActive]}>Light</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.themeBtn, isDark && styles.themeBtnActiveDark]} 
+
+            <TouchableOpacity
+              style={[styles.themeBtn, isDark && styles.themeBtnActiveDark]}
               onPress={() => setIsDark(true)}
             >
-              <Ionicons name="moon-outline" size={20} color={isDark ? "#fff" : "#666"} />
+              <Ionicons name="moon-outline" size={20} color={isDark ? '#fff' : '#666'} />
               <Text style={[styles.themeBtnText, isDark && styles.themeBtnTextActive]}>Dark</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Menu Items */}
         <View style={styles.menuContainer}>
           {menuItems.map((item, index) => (
-            <TouchableOpacity 
-              key={item.id} 
+            <TouchableOpacity
+              key={item.id}
               style={[
-                styles.menuItem, 
+                styles.menuItem,
                 isDark && styles.menuItemDark,
-                index === menuItems.length - 1 ? styles.menuItemLast : null
+                index === menuItems.length - 1 ? styles.menuItemLast : null,
               ]}
               onPress={() => {
                 if (item.screen === 'MyRides') {
                   navigation.navigate('My Rides');
                 } else if (item.screen === 'ReferAndEarn') {
-                  Alert.alert('Refer & Earn', 'Share your referral code DRIVEMATE100 with friends and earn ₹100 per successful referral!');
+                  const refId = userData?.id ? String(userData.id).slice(-6).toUpperCase() : '';
+                  Alert.alert(
+                    'Refer & Earn',
+                    refId
+                      ? `Share your personal account code DM-${refId} with friends when they join DriveMate.`
+                      : 'Sign in to view your referral code.'
+                  );
                 } else if (item.screen === 'MyRewards') {
-                  Alert.alert('DriveMate Rewards', 'You have earned 150 DriveMate points! Redeemable on your next auto or car ride.');
+                  const activeTitles = rewards.map((r) => `• ${r.title}`).join('\n');
+                  Alert.alert(
+                    'DriveMate Rewards',
+                    `Coin Balance: ${coinBalance} coins\nActive Rewards: ${rewards.length}${activeTitles ? `\n\n${activeTitles}` : ''}`
+                  );
                 } else {
                   navigation.navigate(item.screen);
                 }
@@ -130,16 +189,14 @@ export default function MyAccountScreen({ navigation }: any) {
                 </View>
                 <Text style={[styles.menuItemText, isDark && styles.textDark]}>{item.title}</Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color={isDark ? "#666" : "#999"} />
+              <Ionicons name="chevron-forward" size={20} color={isDark ? '#666' : '#999'} />
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Logout Button */}
         <TouchableOpacity style={[styles.logoutBtn, isDark && styles.logoutBtnDark]} onPress={handleLogout}>
           <Text style={styles.logoutText}>Log Out</Text>
         </TouchableOpacity>
-
       </ScrollView>
     </SafeAreaView>
   );

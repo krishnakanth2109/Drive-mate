@@ -1,20 +1,31 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Alert } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  RefreshControl,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
 import { riderService } from '../../services/riderService';
 import { RiderEarningsData } from '../../services/types';
+import { extractApiErrorMessage } from '../../services/api';
 
 export default function EarningsScreen({ navigation }: any) {
   const [earnings, setEarnings] = useState<RiderEarningsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchEarnings = useCallback(async () => {
     try {
+      setError(null);
       const data = await riderService.getEarnings();
       setEarnings(data);
-    } catch (err) {
-      console.log('Failed to fetch earnings:', err);
+    } catch (err: any) {
+      setError(extractApiErrorMessage(err, 'Unable to load earnings data.'));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -33,11 +44,7 @@ export default function EarningsScreen({ navigation }: any) {
     }
   };
 
-  const transactions = earnings?.historySummary || [
-    { id: '1', day: 'Today', amount: 850, rides: 6 },
-    { id: '2', day: 'Yesterday', amount: 1200, rides: 10 },
-    { id: '3', day: 'Mon, 31 Aug', amount: 950, rides: 8 },
-  ];
+  const transactions = earnings?.historySummary || [];
 
   return (
     <ScrollView
@@ -46,36 +53,57 @@ export default function EarningsScreen({ navigation }: any) {
     >
       <View style={styles.heroCard}>
         <Text style={styles.heroLabel}>Total Balance</Text>
-        <Text style={styles.heroAmount}>₹{earnings?.totalBalance ? earnings.totalBalance.toLocaleString() : '3,450'}</Text>
+        <Text style={styles.heroAmount}>
+          ₹{loading && !earnings ? '...' : Number(earnings?.totalBalance ?? 0).toLocaleString('en-IN')}
+        </Text>
         <TouchableOpacity style={styles.cashOutBtn} onPress={handleCashOut}>
           <Text style={styles.cashOutText}>Cash Out to Bank</Text>
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.sectionTitle}>Weekly Summary</Text>
-      <View style={styles.statsGrid}>
-        <View style={styles.statBox}>
-          <Text style={styles.statVal}>{earnings?.weeklyTrips ?? 24}</Text>
-          <Text style={styles.statLabel}>Trips</Text>
+      {error ? (
+        <View style={{ margin: 20, padding: 14, backgroundColor: '#fef2f2', borderRadius: 12, alignItems: 'center' }}>
+          <Text style={{ color: '#b91c1c', marginBottom: 8 }}>{error}</Text>
+          <TouchableOpacity onPress={fetchEarnings}>
+            <Text style={{ color: '#f72585', fontWeight: '700' }}>Retry</Text>
+          </TouchableOpacity>
         </View>
-        <View style={styles.statBox}>
-          <Text style={styles.statVal}>{earnings?.onlineHours ?? '32h'}</Text>
-          <Text style={styles.statLabel}>Online</Text>
-        </View>
-      </View>
-
-      <Text style={styles.sectionTitle}>Recent Payouts & Earnings</Text>
-      <View style={styles.listContainer}>
-        {transactions.map(item => (
-          <View key={item.id} style={styles.row}>
-            <View>
-              <Text style={styles.rowTitle}>{item.day}</Text>
-              <Text style={styles.rowSub}>{item.rides} rides completed</Text>
+      ) : loading && !earnings ? (
+        <ActivityIndicator size="large" color="#2ecc71" style={{ marginTop: 32 }} />
+      ) : (
+        <>
+          <Text style={styles.sectionTitle}>Weekly Summary</Text>
+          <View style={styles.statsGrid}>
+            <View style={styles.statBox}>
+              <Text style={styles.statVal}>{earnings?.weeklyTrips ?? 0}</Text>
+              <Text style={styles.statLabel}>Trips</Text>
             </View>
-            <Text style={styles.rowAmount}>+₹{item.amount}</Text>
+            <View style={styles.statBox}>
+              <Text style={styles.statVal}>{earnings?.onlineHours || '0h 0m'}</Text>
+              <Text style={styles.statLabel}>Drive Time</Text>
+            </View>
           </View>
-        ))}
-      </View>
+
+          <Text style={styles.sectionTitle}>Recent Earnings Breakdown</Text>
+          <View style={styles.listContainer}>
+            {transactions.length === 0 ? (
+              <Text style={{ textAlign: 'center', color: '#888', paddingVertical: 16 }}>
+                No completed trip earnings recorded yet.
+              </Text>
+            ) : (
+              transactions.map((item) => (
+                <View key={item.id} style={styles.row}>
+                  <View>
+                    <Text style={styles.rowTitle}>{item.day}</Text>
+                    <Text style={styles.rowSub}>{item.rides} rides completed</Text>
+                  </View>
+                  <Text style={styles.rowAmount}>+₹{item.amount}</Text>
+                </View>
+              ))
+            )}
+          </View>
+        </>
+      )}
     </ScrollView>
   );
 }

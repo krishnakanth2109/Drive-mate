@@ -21,7 +21,7 @@ import {
 import { StatsCard } from '../../../components/common/StatsCard';
 import { StatusBadge } from '../../../components/common/StatusBadge';
 import { Modal } from '../../../components/common/Modal';
-import { fetchApi } from '../../../api/client';
+import { adminApi } from '../../../api/adminApi';
 
 export function MasterAdminDashboard() {
   const navigate = useNavigate();
@@ -30,22 +30,25 @@ export function MasterAdminDashboard() {
   const [cityStats, setCityStats] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
 
   const loadDashboardData = async () => {
     try {
       setRefreshing(true);
+      setError(null);
       const [statsData, ordersData, regData] = await Promise.all([
-        fetchApi('/admin/stats').catch(() => null),
-        fetchApi('/admin/orders?limit=6').catch(() => null),
-        fetchApi('/admin/driver-verifications?limit=10').catch(() => null),
+        adminApi.getStats(),
+        adminApi.getOrders({ limit: 6 }),
+        adminApi.getDriverVerifications({ limit: 10 }),
       ]);
 
       if (statsData) setStats(statsData);
       if (ordersData?.orders) setRecentOrders(ordersData.orders);
       if (regData?.metrics?.byCity) setCityStats(regData.metrics.byCity);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching dashboard data:', err);
+      setError(err?.message || 'Failed to load live metrics');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -110,6 +113,18 @@ export function MasterAdminDashboard() {
         </div>
       </div>
 
+      {error && (
+        <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center justify-between gap-3">
+          <span>{error}</span>
+          <button
+            onClick={() => loadDashboardData()}
+            className="px-3 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 font-semibold"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatsCard
@@ -118,7 +133,6 @@ export function MasterAdminDashboard() {
           subtitle="All completed trip earnings"
           icon={IndianRupee}
           color="emerald"
-          trend={{ value: '18.4%', isPositive: true, label: 'this month' }}
         />
 
         <StatsCard

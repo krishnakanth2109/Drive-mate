@@ -15,13 +15,14 @@ import {
 import { DataTable, Column } from '../../../components/common/DataTable';
 import { StatusBadge } from '../../../components/common/StatusBadge';
 import { Modal } from '../../../components/common/Modal';
-import { fetchApi } from '../../../api/client';
+import { adminApi } from '../../../api/adminApi';
 
 export function UsersManager() {
   const [activeTab, setActiveTab] = useState<'staff' | 'customers'>('staff');
   const [staffUsers, setStaffUsers] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [roles, setRoles] = useState<any[]>([]);
@@ -35,17 +36,19 @@ export function UsersManager() {
   const loadData = async () => {
     try {
       setLoading(true);
+      setError(null);
       const [staffData, customerData, rolesData] = await Promise.all([
-        fetchApi('/admin/list').catch(() => []),
-        fetchApi('/admin/customers').catch(() => []),
-        fetchApi('/rbac/roles').catch(() => []),
+        adminApi.getAdmins(),
+        adminApi.getCustomers(),
+        adminApi.getRoles(),
       ]);
 
       setStaffUsers(Array.isArray(staffData) ? staffData : []);
       setCustomers(Array.isArray(customerData) ? customerData : []);
       if (Array.isArray(rolesData)) setRoles(rolesData);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load users data:', err);
+      setError(err?.message || 'Failed to load staff and customers');
     } finally {
       setLoading(false);
     }
@@ -59,14 +62,11 @@ export function UsersManager() {
     e.preventDefault();
     try {
       setSubmitting(true);
-      await fetchApi('/admin/create', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: name.trim(),
-          email: email.trim().toLowerCase(),
-          password,
-          role: selectedRole,
-        }),
+      await adminApi.createAdmin({
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        password,
+        role: selectedRole,
       });
 
       alert('Staff administrator user created successfully!');

@@ -7,6 +7,7 @@ import {
   createTopup,
   verifyTopup,
   getTopupStatus,
+  handleTopupCallback,
   simulatePayment,
   deductFare,
   refundFare,
@@ -24,8 +25,9 @@ import {
 
 const router: Router = express.Router();
 
-// --- Public Webhook Route (Signature Verified against Raw Request Body) ---
+// --- Public Webhook & Checkout Callback Routes ---
 router.post('/webhook', handleWebhook);
+router.all('/topup/callback', handleTopupCallback);
 
 // --- Protected Wallet Routes (Authenticated Customer or Rider) ---
 router.get('/', auth, getWallet);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -7,28 +7,50 @@ import {
   Linking,
   Platform,
   Alert,
-  ActivityIndicator
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRider } from '../../context/RiderContext';
+import RiderWebMapView from '../../components/RiderWebMapView';
+import GeofenceArrivalCard from '../../components/GeofenceArrivalCard';
+import { evaluateDriverGeofence } from '../../utils/geofence';
 
 export default function DropNavigationScreen({ navigation }: any) {
-  const { activeRide, completeRide } = useRider();
-  const [loading, setLoading] = useState(false);
+  const {
+    activeRide,
+    arriveAtDrop,
+    completeRide,
+    location,
+    driverGps,
+    googleMapsKey,
+    isArrivalSubmitting,
+    refreshCurrentGps,
+  } = useRider();
+  const [completing, setCompleting] = useState(false);
 
-  const dropLat = activeRide?.drop?.lat || 28.6289;
-  const dropLng = activeRide?.drop?.lng || 77.2180;
+  const dropLat = activeRide?.drop?.lat ?? null;
+  const dropLng = activeRide?.drop?.lng ?? null;
   const dropAddress = activeRide?.drop?.address || 'Drop-off Destination';
   const customerName = activeRide?.customer?.name || 'Customer';
   const customerPhone = activeRide?.customer?.phone || '';
   const fare = activeRide?.fare || 0;
   const distance = activeRide?.distance || 0;
+  const isDropArrived = activeRide?.status === 'drop_arrived';
+
+  const dropEval = useMemo(
+    () => evaluateDriverGeofence(driverGps, activeRide?.drop, 'drop'),
+    [driverGps, activeRide?.drop]
+  );
 
   const handleOpenExternalMaps = () => {
+    if (dropLat == null || dropLng == null) {
+      Alert.alert('Navigation Error', 'Drop coordinates unavailable');
+      return;
+    }
     const url = Platform.select({
       ios: `maps://app?daddr=${dropLat},${dropLng}`,
       android: `google.navigation:q=${dropLat},${dropLng}`,
-      default: `https://www.google.com/maps/dir/?api=1&destination=${dropLat},${dropLng}`
+      default: `https://www.google.com/maps/dir/?api=1&destination=${dropLat},${dropLng}`,
     });
     if (url) {
       Linking.openURL(url).catch(() => {
@@ -49,11 +71,22 @@ export default function DropNavigationScreen({ navigation }: any) {
     navigation.navigate('ChatScreen', {
       customerName,
       customerPhone,
-      rideId: activeRide?._id
+      rideId: activeRide?._id,
     });
   };
 
+  const handleDeclareDropArrival = async () => {
+    const ok = await arriveAtDrop();
+    if (ok) {
+      Alert.alert('Destination Reached', 'Drop arrival confirmed! You can now collect the fare and complete the trip.');
+    }
+  };
+
   const handleEndTrip = () => {
+    if (!isDropArrived) {
+      Alert.alert('Drop Arrival Required', 'Move within 50 m of the drop location and tap "Reached Drop Location" first.');
+      return;
+    }
     Alert.alert(
       'Complete Trip',
       `Confirm trip completion and collect ₹${fare}?`,
@@ -63,37 +96,47 @@ export default function DropNavigationScreen({ navigation }: any) {
           text: 'Complete Trip',
           onPress: async () => {
             const rideId = activeRide?._id;
-            setLoading(true);
+            setCompleting(true);
             try {
-              await completeRide();
-              if (rideId) {
-                navigation.replace('OrderDetails', { rideId });
-              } else {
-                navigation.replace('MainTabs');
+              const ok = await completeRide();
+              if (ok) {
+                if (rideId) {
+                  navigation.replace('OrderDetails', { rideId });
+                } else {
+                  navigation.replace('MainTabs');
+                }
               }
-            } catch (err) {
-              Alert.alert('Error', 'Failed to complete trip');
             } finally {
-              setLoading(false);
+              setCompleting(false);
             }
-          }
-        }
+          },
+        },
       ]
     );
   };
 
+  const centerPoint =
+    driverGps?.latitude != null && driverGps?.longitude != null
+      ? { latitude: driverGps.latitude, longitude: driverGps.longitude }
+      : location || (dropLat != null && dropLng != null ? { latitude: Number(dropLat), longitude: Number(dropLng) } : null);
+
   return (
     <View style={styles.container}>
-      {/* Map visual card */}
+      {/* Live Map with 50m Drop Geofence Circle */}
       <View style={styles.mapArea}>
-        <Ionicons name="navigate-circle" size={90} color="#4CAF50" />
-        <Text style={styles.navStatusText}>Heading to Destination</Text>
-        <Text style={styles.targetAddress} numberOfLines={2}>
-          {dropAddress}
-        </Text>
+        <RiderWebMapView
+          center={centerPoint}
+          googleMapsKey={googleMapsKey}
+          zoom={17}
+          dropCoord={dropLat != null && dropLng != null ? { lat: Number(dropLat), lng: Number(dropLng) } : null}
+          activeGeofenceTarget="drop"
+          isWithinGeofence={dropEval.isWithinRadius || isDropArrived}
+          style={StyleSheet.absoluteFill}
+        />
+
         <TouchableOpacity style={styles.externalMapsBtn} onPress={handleOpenExternalMaps}>
-          <Ionicons name="navigate-outline" size={18} color="#fff" />
-          <Text style={styles.externalMapsText}>Turn-by-Turn Navigation</Text>
+          <Ionicons name="navigate-outline" size={16} color="#fff" />
+          <Text style={styles.externalMapsText}>Google Maps</Text>
         </TouchableOpacity>
       </View>
 
@@ -103,17 +146,19 @@ export default function DropNavigationScreen({ navigation }: any) {
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
         <View style={styles.instructionBox}>
-          <Ionicons name="flag" size={28} color="#fff" />
+          <Ionicons name="flag" size={24} color="#fff" />
           <View style={{ marginLeft: 10, flex: 1 }}>
-            <Text style={styles.instructionText}>En route to Drop Location</Text>
-            <Text style={styles.instructionSub}>
-              {distance ? `${distance} km total trip` : 'Driving safely'}
+            <Text style={styles.instructionText}>
+              {isDropArrived ? 'Reached Destination' : 'En route to Drop Location'}
+            </Text>
+            <Text style={styles.instructionSub} numberOfLines={1}>
+              {isDropArrived ? dropAddress : `${dropEval.distanceLabel} • ${distance ? `${distance} km trip` : dropAddress}`}
             </Text>
           </View>
         </View>
       </View>
 
-      {/* Bottom Fare & Action Bar */}
+      {/* Bottom Fare, Geofence & Action Bar */}
       <View style={styles.bottomBar}>
         <View style={styles.customerRow}>
           <View style={styles.avatar}>
@@ -122,7 +167,7 @@ export default function DropNavigationScreen({ navigation }: any) {
           <View style={{ flex: 1, marginLeft: 10 }}>
             <Text style={styles.customerName}>{customerName}</Text>
             <Text style={styles.paymentMode}>
-              {activeRide?.paymentMethod || 'Cash on Delivery'}
+              {activeRide?.paymentMethod || 'Wallet / Cash'} • ₹{fare}
             </Text>
           </View>
           <TouchableOpacity style={styles.contactBtn} onPress={handleChatCustomer}>
@@ -133,26 +178,45 @@ export default function DropNavigationScreen({ navigation }: any) {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.tripMetaRow}>
-          <View>
-            <Text style={styles.fareLabel}>Collect Fare</Text>
-            <Text style={styles.fareValue}>₹{fare}</Text>
-          </View>
-          <TouchableOpacity
-            style={styles.endBtn}
-            onPress={handleEndTrip}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                <Ionicons name="checkmark-done" size={20} color="#fff" />
-                <Text style={styles.endBtnText}>End Trip</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
+        {isDropArrived ? (
+          <>
+            <View style={styles.arrivedConfirmedBox}>
+              <Ionicons name="checkmark-circle" size={20} color="#10b981" />
+              <Text style={styles.arrivedConfirmedText}>
+                Drop arrival verified within 50m radius. Ready to complete trip!
+              </Text>
+            </View>
+            <View style={styles.tripMetaRow}>
+              <View>
+                <Text style={styles.fareLabel}>Collect Fare</Text>
+                <Text style={styles.fareValue}>₹{fare}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.endBtn}
+                onPress={handleEndTrip}
+                disabled={completing}
+              >
+                {completing ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-done" size={20} color="#fff" />
+                    <Text style={styles.endBtnText}>End Trip</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </>
+        ) : (
+          <GeofenceArrivalCard
+            mode="drop"
+            evaluation={dropEval}
+            isSubmitting={isArrivalSubmitting}
+            onPressArrive={handleDeclareDropArrival}
+            onRefreshGps={refreshCurrentGps}
+            variant="dark"
+          />
+        )}
       </View>
     </View>
   );
@@ -163,33 +227,25 @@ const styles = StyleSheet.create({
   mapArea: {
     flex: 1,
     backgroundColor: '#242436',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 30,
-  },
-  navStatusText: { color: '#fff', fontSize: 22, fontWeight: 'bold', marginTop: 15 },
-  targetAddress: {
-    color: '#a0a0b0',
-    marginTop: 8,
-    fontSize: 15,
-    textAlign: 'center',
-    lineHeight: 22,
-    maxWidth: '85%',
+    position: 'relative',
   },
   externalMapsBtn: {
+    position: 'absolute',
+    right: 16,
+    bottom: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#2e7d32',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     borderRadius: 20,
-    marginTop: 20,
-    gap: 8,
+    gap: 6,
+    elevation: 6,
   },
-  externalMapsText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  externalMapsText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   overlayHeader: {
     position: 'absolute',
-    top: 50,
+    top: 48,
     left: 16,
     right: 16,
     flexDirection: 'row',
@@ -199,29 +255,25 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.65)',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 10,
   },
   instructionBox: {
     flex: 1,
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#10b981',
     borderRadius: 14,
     padding: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#4CAF50',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
     elevation: 5,
   },
-  instructionText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  instructionSub: { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 2 },
+  instructionText: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
+  instructionSub: { color: 'rgba(255,255,255,0.9)', fontSize: 12, marginTop: 2 },
   bottomBar: {
     backgroundColor: '#1E1E2C',
-    padding: 20,
+    padding: 18,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderTopWidth: 1,
@@ -230,13 +282,13 @@ const styles = StyleSheet.create({
   customerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#4CAF50',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#10b981',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -252,18 +304,33 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   callBtn: { backgroundColor: '#1b3b2b' },
+  arrivedConfirmedBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1b3b2b',
+    borderRadius: 12,
+    padding: 12,
+    gap: 10,
+    marginBottom: 14,
+  },
+  arrivedConfirmedText: {
+    color: '#d1fae5',
+    fontSize: 12.5,
+    fontWeight: '600',
+    flex: 1,
+  },
   tripMetaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   fareLabel: { color: '#a0a0b0', fontSize: 12 },
-  fareValue: { color: '#06d6a0', fontSize: 26, fontWeight: 'bold', marginTop: 2 },
+  fareValue: { color: '#06d6a0', fontSize: 24, fontWeight: 'bold', marginTop: 2 },
   endBtn: {
-    backgroundColor: '#f72585',
+    backgroundColor: '#10b981',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 28,
+    paddingHorizontal: 26,
     paddingVertical: 14,
     borderRadius: 25,
     gap: 8,

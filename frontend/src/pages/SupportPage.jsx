@@ -28,8 +28,8 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import axios from 'axios';
 import { Navbar } from '../components/Navbar';
+import { communityApi } from '../api/communityApi';
 
 // 10 Detailed Support Options
 const SUPPORT_CATEGORIES = [
@@ -127,31 +127,17 @@ const SUPPORT_CATEGORIES = [
 
 export function SupportPage() {
   const [activeTab, setActiveTab] = useState('inride'); // 'inride' | 'general' | 'call'
-  const [searchRideId, setSearchRideId] = useState('DM-9020');
-  const [currentRide, setCurrentRide] = useState({
-    id: 'DM-9020',
-    fullId: 'live_active_trip',
-    status: 'arrived',
-    customerName: 'Ananya Roy',
-    customerPhone: '+91 94432 88712',
-    driverName: 'Manjunath Reddy',
-    driverPhone: '+91 97412 88901',
-    vehicle: 'Bajaj Auto RE (KA-01-AB-2819)',
-    pickup: 'Koramangala 5th Block Club',
-    drop: 'HSR Layout BDA Complex',
-    fare: 95.00,
-    distance: 3.2,
-    otp: '2819',
-    waitTimeMins: 5
-  });
+  const [searchRideId, setSearchRideId] = useState('');
+  const [currentRide, setCurrentRide] = useState(null);
   const [recentRides, setRecentRides] = useState([]);
   const [userRole, setUserRole] = useState('Customer'); // 'Customer' | 'Rider'
   const [copiedId, setCopiedId] = useState(false);
   const [searchingRide, setSearchingRide] = useState(false);
+  const [lookupError, setLookupError] = useState('');
 
   // Wait time calculator state
-  const [waitMinutes, setWaitMinutes] = useState(5);
-  const [driverArrivedPrompt, setDriverArrivedPrompt] = useState(true);
+  const [waitMinutes, setWaitMinutes] = useState(0);
+  const [driverArrivedPrompt, setDriverArrivedPrompt] = useState(false);
 
   // Support category selection & Ticket modal
   const [selectedCategory, setSelectedCategory] = useState(SUPPORT_CATEGORIES[2]);
@@ -160,150 +146,96 @@ export function SupportPage() {
   const [ticketDetails, setTicketDetails] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [ticketSuccess, setTicketSuccess] = useState(null);
+  const [ticketError, setTicketError] = useState('');
 
   // Call support modal state
   const [callModalOpen, setCallModalOpen] = useState(false);
   const [callbackRequested, setCallbackRequested] = useState(false);
-  const [callbackPhone, setCallbackPhone] = useState('+91 98845 22109');
-
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+  const [callbackPhone, setCallbackPhone] = useState('');
 
   // Live Ride lookup from backend API
   const lookupRide = async (queryId) => {
     if (!queryId) return;
     const cleanId = queryId.trim();
     setSearchingRide(true);
+    setLookupError('');
 
     try {
-      // 1. Try backend direct ride endpoint
-      const res = await axios.get(`${API_URL}/ride/${cleanId}`);
-      if (res.data?.data) {
-        const r = res.data.data;
+      const r = await communityApi.getRide(cleanId);
+      if (r) {
         const mappedRide = {
           id: r.displayId || (r.id ? `DM-${r.id.slice(-4).toUpperCase()}` : cleanId),
           fullId: r.id || cleanId,
           status: r.status || 'accepted',
           customerName: r.customer?.name || 'Customer',
-          customerPhone: r.customer?.phone || '+91 98765 43210',
+          customerPhone: r.customer?.phone || '',
           driverName: r.rider?.name || 'Driver Partner',
-          driverPhone: r.rider?.phone || '+91 98800 12345',
-          vehicle: r.rider?.vehicle ? `${r.rider.vehicle.make || ''} ${r.rider.vehicle.model || ''} (${r.rider.vehicle.plateNumber || ''})`.trim() : (r.vehicleType || 'DriveMate Cab'),
+          driverPhone: r.rider?.phone || '',
+          vehicle: r.rider?.vehicle ? `${r.rider.vehicle.make || ''} ${r.rider.vehicle.model || ''} (${r.rider.vehicle.plateNumber || r.rider.vehicle.plate || ''})`.trim() : (r.vehicleType || 'Assigned Vehicle'),
           pickup: r.pickup?.address || r.pickupAddress || 'Pickup Point',
           drop: r.drop?.address || r.dropAddress || 'Destination',
-          fare: Number(r.fare) || 150.00,
-          distance: Number(r.distance) || 5.0,
-          otp: r.otp || '****',
+          fare: Number(r.fare) || 0,
+          distance: Number(r.distance) || 0,
+          otp: r.otp || '',
           waitTimeMins: 0
         };
 
         try {
-          const waitRes = await axios.get(`${API_URL}/ride/${cleanId}/wait-time`);
-          if (waitRes.data?.data) {
-            mappedRide.waitTimeMins = waitRes.data.data.elapsedWaitMinutes || 0;
-            setWaitMinutes(waitRes.data.data.elapsedWaitMinutes || 0);
+          const waitData = await communityApi.getRideWaitTime(cleanId);
+          if (waitData) {
+            mappedRide.waitTimeMins = waitData.elapsedWaitMinutes || 0;
+            setWaitMinutes(waitData.elapsedWaitMinutes || 0);
           }
         } catch {
-          // If not arrived yet
+          // Wait time unavailable
         }
 
         setCurrentRide(mappedRide);
-        setSearchingRide(false);
         return;
       }
-    } catch {
-      // Fallback: check recent rides from admin endpoint if available
-      try {
-        const recentRes = await axios.get(`${API_URL}/admin/recent-rides`);
-        const recentList = recentRes.data?.data || [];
-        const match = recentList.find(r => 
-          (r.id && r.id.toLowerCase().includes(cleanId.toLowerCase())) ||
-          (r._id && r._id.toLowerCase().includes(cleanId.toLowerCase()))
-        );
-        if (match) {
-          const mappedRide = {
-            id: match.displayId || `DM-${(match.id || match._id).slice(-4).toUpperCase()}`,
-            fullId: match.id || match._id,
-            status: match.status || 'accepted',
-            customerName: match.customerName || match.customer?.name || 'Customer',
-            customerPhone: match.customerPhone || match.customer?.phone || '+91 98765 43210',
-            driverName: match.driverName || match.rider?.name || 'Driver Partner',
-            driverPhone: match.driverPhone || match.rider?.phone || '+91 98800 12345',
-            vehicle: match.vehicleType || 'DriveMate Cab',
-            pickup: match.pickupAddress || match.pickup?.address || 'Pickup Point',
-            drop: match.dropAddress || match.drop?.address || 'Destination',
-            fare: Number(match.fare) || 180.00,
-            distance: Number(match.distance) || 6.2,
-            otp: match.otp || '****',
-            waitTimeMins: 2
-          };
-          setCurrentRide(mappedRide);
-          setWaitMinutes(2);
-          setSearchingRide(false);
-          return;
-        }
-      } catch {
-        // Fallback
-      }
+      setLookupError('Ride not found for that ID.');
+    } catch (err) {
+      setLookupError(err.message || 'No matching ride found. Check the Ride ID or sign in first.');
+    } finally {
+      setSearchingRide(false);
     }
-
-    // Dynamic fallback when ride is not in local DB
-    const fallbackRide = {
-      id: cleanId.startsWith('DM-') ? cleanId : `DM-${cleanId.slice(-6).toUpperCase()}`,
-      fullId: cleanId,
-      status: 'accepted',
-      customerName: 'Current Passenger',
-      customerPhone: '+91 98765 43210',
-      driverName: 'Assigned Driver Partner',
-      driverPhone: '+91 98800 12345',
-      vehicle: 'DriveMate Verified Cab',
-      pickup: 'Live Pickup Location',
-      drop: 'Requested Destination',
-      fare: 180.00,
-      distance: 7.2,
-      otp: '5521',
-      waitTimeMins: 2
-    };
-    setCurrentRide(fallbackRide);
-    setWaitMinutes(2);
-    setSearchingRide(false);
   };
 
-  // Load initial recent rides from backend on mount
+  // Load user's own recent trips when logged in
   useEffect(() => {
     const fetchRecentTrips = async () => {
       try {
-        const res = await axios.get(`${API_URL}/admin/recent-rides`);
-        const list = res.data?.data || [];
+        const historyRes = await communityApi.getCustomerHistory(4);
+        const list = historyRes?.rides || [];
         if (Array.isArray(list) && list.length > 0) {
-          const mapped = list.slice(0, 4).map(r => ({
+          const mapped = list.map((r) => ({
             id: r.displayId || `DM-${(r.id || r._id).slice(-4).toUpperCase()}`,
             fullId: r.id || r._id,
             status: r.status || 'ongoing',
-            customerName: r.customerName || r.customer?.name || 'Customer',
-            customerPhone: r.customerPhone || r.customer?.phone || '+91 98845 22109',
-            driverName: r.driverName || r.rider?.name || 'Driver Partner',
-            driverPhone: r.driverPhone || r.rider?.phone || '+91 98801 33419',
-            vehicle: r.vehicleType || 'DriveMate Cab',
-            pickup: r.pickupAddress || 'Indiranagar Metro Station',
-            drop: r.dropAddress || 'Embassy GolfLinks Business Park',
-            fare: Number(r.fare) || 140.00,
-            distance: Number(r.distance) || 5.0,
-            otp: r.otp || '4481',
-            waitTimeMins: r.status === 'arrived' ? 4 : 1
+            customerName: r.customer?.name || 'You',
+            customerPhone: r.customer?.phone || '',
+            driverName: r.rider?.name || 'Assigned Driver',
+            driverPhone: r.rider?.phone || '',
+            vehicle: r.vehicleType || 'Vehicle',
+            pickup: r.pickupAddress || r.pickup?.address || 'Pickup',
+            drop: r.dropAddress || r.drop?.address || 'Destination',
+            fare: Number(r.fare) || 0,
+            distance: Number(r.distance) || 0,
+            otp: r.otp || '',
+            waitTimeMins: 0,
           }));
           setRecentRides(mapped);
           if (mapped[0]) {
             setCurrentRide(mapped[0]);
-            setSearchRideId(mapped[0].id);
-            setWaitMinutes(mapped[0].waitTimeMins);
+            setSearchRideId(mapped[0].fullId);
           }
         }
       } catch {
-        // Leave defaults if unauthenticated
+        // Guest users can still look up rides by ID directly
       }
     };
     fetchRecentTrips();
-  }, [API_URL]);
+  }, []);
 
   // Handle Ride ID search form submit
   const handleSearchRide = (e) => {
@@ -327,9 +259,10 @@ export function SupportPage() {
   // Open ticket form with selected category
   const handleOpenCategoryTicket = (cat) => {
     setSelectedCategory(cat);
-    setTicketSubject(`${cat.title} - Ride #${currentRide?.id || 'DM-ACTIVE'}`);
+    setTicketSubject(`${cat.title}${currentRide?.id ? ` - Ride #${currentRide.id}` : ''}`);
     setTicketDetails('');
     setTicketSuccess(null);
+    setTicketError('');
     setTicketModalOpen(true);
   };
 
@@ -337,30 +270,27 @@ export function SupportPage() {
   const handleSubmitTicket = async (e) => {
     e.preventDefault();
     setSubmitting(true);
+    setTicketError('');
 
     const ticketPayload = {
-      rideId: currentRide?.id || 'DM-GENERAL',
+      rideId: currentRide?.fullId || undefined,
       userType: userRole,
       userName: userRole === 'Customer' ? currentRide?.customerName || 'Customer' : currentRide?.driverName || 'Driver Partner',
-      userPhone: userRole === 'Customer' ? currentRide?.customerPhone || '+91 98845 22109' : currentRide?.driverPhone || '+91 98801 33419',
+      userPhone: userRole === 'Customer' ? currentRide?.customerPhone || callbackPhone || '' : currentRide?.driverPhone || callbackPhone || '',
       category: selectedCategory?.title || 'Ride Assistance',
-      subject: ticketSubject || `${selectedCategory?.title} (Ride #${currentRide?.id})`,
-      details: ticketDetails || `Wait time reported: ${waitMinutes} mins. Priority assistance required for ride ${currentRide?.id}.`,
-      priority: selectedCategory?.priority || 'high'
+      subject: ticketSubject || `${selectedCategory?.title}`,
+      details: ticketDetails || 'Support request submitted.',
+      priority: selectedCategory?.priority || 'high',
     };
 
     try {
-      const res = await axios.post(`${API_URL}/support/tickets`, ticketPayload, { timeout: 4000 });
+      const created = await communityApi.submitSupportTicket(ticketPayload);
       setTicketSuccess({
-        id: res.data?.data?.id || `TCK-${Math.floor(1000 + Math.random() * 9000)}`,
-        message: 'Your support ticket has been registered. An executive is reviewing telemetry logs.'
+        id: created?.ticketNumber || created?.id,
+        message: 'Your support ticket has been registered with our support team.',
       });
     } catch (err) {
-      // Fallback demo ticket id
-      setTicketSuccess({
-        id: `TCK-${Math.floor(1000 + Math.random() * 9000)}`,
-        message: 'Your support ticket has been received and prioritized in our 24/7 resolution queue.'
-      });
+      setTicketError(err.message || 'Failed to submit support ticket. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -958,7 +888,7 @@ export function SupportPage() {
                     type="tel"
                     value={callbackPhone}
                     onChange={(e) => setCallbackPhone(e.target.value)}
-                    placeholder="+91 98845 22109"
+                    placeholder="Enter mobile number"
                     className="bg-slate-900 border border-white/15 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:border-[#f72585]"
                   />
                   <button
@@ -1118,10 +1048,16 @@ export function SupportPage() {
                       <span className="text-white font-semibold">{userRole}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span>Simulated Wait Time:</span>
+                      <span>Reported Wait Time:</span>
                       <span className="text-amber-400 font-semibold">{waitMinutes} mins</span>
                     </div>
                   </div>
+
+                  {ticketError && (
+                    <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs">
+                      {ticketError}
+                    </div>
+                  )}
 
                   <div className="flex items-center gap-3 pt-2">
                     <button

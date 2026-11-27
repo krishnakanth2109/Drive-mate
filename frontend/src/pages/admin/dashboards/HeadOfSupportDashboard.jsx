@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
+import { adminApi } from '../../../api/adminApi';
 import { 
   Users, 
   TrendingUp, 
@@ -29,67 +29,50 @@ export function HeadOfSupportDashboard() {
     urgentCount: 0,
     escalatedCount: 0,
     resolvedToday: 0,
-    avgFirstResponseMinutes: 4.8,
-    csatScore: 4.85
+    avgFirstResponseMinutes: 0,
+    csatScore: null
   });
   const [loading, setLoading] = useState(true);
   const [selectedEscalation, setSelectedEscalation] = useState(null);
   const [toast, setToast] = useState(null);
   const [processing, setProcessing] = useState(false);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-  const token = sessionStorage.getItem('vlt_master_token');
-  const authHeader = token ? { headers: { 'x-auth-token': token } } : {};
-
   const fetchSupportData = useCallback(async () => {
     setLoading(true);
     try {
-      const [escalationsRes, metricsRes, ticketsRes] = await Promise.allSettled([
-        axios.get(`${API_URL}/support/escalations`, authHeader),
-        axios.get(`${API_URL}/support/metrics`, authHeader),
-        axios.get(`${API_URL}/support/tickets`, authHeader)
+      const [rawEsc, metricsData, rawTickets] = await Promise.all([
+        adminApi.getSupportEscalations(),
+        adminApi.getSupportMetrics(),
+        adminApi.getSupportTickets(),
       ]);
 
-      if (escalationsRes.status === 'fulfilled' && escalationsRes.value.data?.data) {
-        const raw = escalationsRes.value.data.data;
-        const mapped = (Array.isArray(raw) ? raw : []).map(e => ({
-          id: e.id ? `ESC-${e.id.slice(-4).toUpperCase()}` : 'ESC-101',
+      const escList = Array.isArray(rawEsc) ? rawEsc : [];
+      setEscalations(
+        escList.map((e) => ({
+          id: e.id ? `ESC-${e.id.slice(-4).toUpperCase()}` : 'ESC',
           rawId: e.id,
-          ticketId: e.ticketNumber || (e.ticketId ? `TCK-${e.ticketId.slice(-4).toUpperCase()}` : 'TCK-8091'),
+          ticketId: e.ticketNumber || (e.ticketId ? `TCK-${e.ticketId.slice(-4).toUpperCase()}` : 'TCK'),
           customer: e.customerName || 'Customer',
           driver: 'Assigned Driver Partner',
           category: e.category || 'Service Dispute',
-          amount: e.approvedRefund ? `₹${e.approvedRefund}` : '₹420',
-          rawAmount: e.approvedRefund || 420,
-          requestedAction: e.requestedAction || 'Supervisor Review & Wallet Credit Approval',
-          reason: e.details || e.supervisorNotes || 'Service dispute requiring leadership intervention',
+          amount: e.approvedRefund ? `₹${e.approvedRefund}` : '₹0',
+          rawAmount: e.approvedRefund || 0,
+          requestedAction: e.requestedAction || 'Supervisor Review',
+          reason: e.details || e.supervisorNotes || '',
           urgency: e.priority?.toLowerCase() || 'high',
           status: e.status?.replace('_', ' ')?.toLowerCase() || 'pending review'
-        }));
-        setEscalations(mapped);
-      } else {
-        setEscalations([]);
+        }))
+      );
+
+      if (metricsData) {
+        setMetrics(metricsData);
       }
 
-      if (metricsRes.status === 'fulfilled' && metricsRes.value.data?.data) {
-        setMetrics(metricsRes.value.data.data);
-      }
-
-      // Generate agent team metrics from ticket activity
-      const tickets = (ticketsRes.status === 'fulfilled' && ticketsRes.value.data?.data)
-        ? (Array.isArray(ticketsRes.value.data.data) ? ticketsRes.value.data.data : [])
-        : [];
-
-      const agentMap = {
-        'Priya Sharma': { handled: 0, resolved: 0 },
-        'Naveen Rao': { handled: 0, resolved: 0 },
-        'Deepa Menon': { handled: 0, resolved: 0 },
-        'Rahul Joshi': { handled: 0, resolved: 0 }
-      };
-
-      tickets.forEach((t, i) => {
-        const names = Object.keys(agentMap);
-        const name = t.assignedAgent?.name || names[i % names.length];
+      const tickets = Array.isArray(rawTickets) ? rawTickets : [];
+      const agentMap = {};
+      tickets.forEach((t) => {
+        const name = t.assignedAgent?.name;
+        if (!name) return;
         if (!agentMap[name]) agentMap[name] = { handled: 0, resolved: 0 };
         agentMap[name].handled += 1;
         if (t.status === 'resolved' || t.status === 'closed') {
@@ -98,22 +81,22 @@ export function HeadOfSupportDashboard() {
       });
 
       const mappedAgents = Object.entries(agentMap).map(([name, data], idx) => ({
-        id: `AGT-10${idx + 1}`,
+        id: `AGT-${idx + 1}`,
         name,
-        handled: data.handled || (30 + idx * 5),
-        resolved: data.resolved || (28 + idx * 4),
-        avgTime: `${(2.2 + idx * 0.4).toFixed(1)}m`,
-        csat: `${(94.0 + idx * 1.5).toFixed(1)}%`,
-        status: idx === 2 ? 'in review' : 'active'
+        handled: data.handled,
+        resolved: data.resolved,
+        avgTime: '—',
+        csat: data.handled > 0 ? `${Math.round((data.resolved / data.handled) * 100)}%` : '0%',
+        status: 'active'
       }));
       setAgents(mappedAgents);
-
     } catch (err) {
       console.error('Failed to load head of support data:', err);
+      setToast({ title: 'Load Error', message: err.message || 'Unable to load support escalations.', type: 'error' });
     } finally {
       setLoading(false);
     }
-  }, [API_URL, token]);
+  }, []);
 
   useEffect(() => {
     fetchSupportData();
@@ -123,29 +106,23 @@ export function HeadOfSupportDashboard() {
     const targetId = esc.rawId || esc.id;
     setProcessing(true);
     try {
-      await axios.post(`${API_URL}/support/escalations/${targetId}/review`, {
+      await adminApi.reviewEscalation(targetId, {
         status: 'approved',
         supervisorNotes: 'Refund voucher authorized by Head of Support',
-        approvedRefund: esc.rawAmount || 420
-      }, authHeader);
+        approvedRefund: esc.rawAmount || 0
+      });
 
-      setEscalations(prev => prev.filter(e => e.rawId !== targetId && e.id !== targetId));
+      setEscalations((prev) => prev.filter((e) => e.rawId !== targetId && e.id !== targetId));
       setSelectedEscalation(null);
       setToast({
         title: 'Escalation Approved',
-        message: `Refund & disciplinary action approved for case ${esc.id}. Customer wallet credited.`,
+        message: `Review completed for case ${esc.id}.`,
         type: 'success'
       });
       fetchSupportData();
     } catch (err) {
       console.error('Approve error:', err);
-      setEscalations(prev => prev.filter(e => e.rawId !== targetId && e.id !== targetId));
-      setSelectedEscalation(null);
-      setToast({
-        title: 'Escalation Approved',
-        message: `Case ${esc.id} resolved with approved compensation.`,
-        type: 'success'
-      });
+      setToast({ title: 'Action Failed', message: err.message || 'Could not approve escalation.', type: 'error' });
     } finally {
       setProcessing(false);
     }
@@ -155,28 +132,22 @@ export function HeadOfSupportDashboard() {
     const targetId = esc.rawId || esc.id;
     setProcessing(true);
     try {
-      await axios.post(`${API_URL}/support/escalations/${targetId}/review`, {
+      await adminApi.reviewEscalation(targetId, {
         status: 'dismissed',
         supervisorNotes: 'Dismissed back to tier-1 queue with coaching instructions'
-      }, authHeader);
+      });
 
-      setEscalations(prev => prev.filter(e => e.rawId !== targetId && e.id !== targetId));
+      setEscalations((prev) => prev.filter((e) => e.rawId !== targetId && e.id !== targetId));
       setSelectedEscalation(null);
       setToast({
         title: 'Escalation Dismissed',
-        message: `Case ${esc.id} was dismissed back to tier-1 queue with feedback.`,
+        message: `Case ${esc.id} was dismissed back to tier-1 queue.`,
         type: 'info'
       });
       fetchSupportData();
     } catch (err) {
       console.error('Dismiss error:', err);
-      setEscalations(prev => prev.filter(e => e.rawId !== targetId && e.id !== targetId));
-      setSelectedEscalation(null);
-      setToast({
-        title: 'Escalation Dismissed',
-        message: `Case ${esc.id} dismissed.`,
-        type: 'info'
-      });
+      setToast({ title: 'Action Failed', message: err.message || 'Could not dismiss escalation.', type: 'error' });
     } finally {
       setProcessing(false);
     }

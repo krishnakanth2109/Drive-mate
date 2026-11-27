@@ -140,7 +140,7 @@ export default function WalletScreen() {
         amount: Number(orderData.amount || numericAmount),
         amountPaise: orderData.amountPaise || Math.round(numericAmount * 100),
         currency: orderData.currency || 'INR',
-        keyId: orderData.keyId,
+        keyId: orderData.keyId || process.env.EXPO_PUBLIC_RAZORPAY_KEY_ID || '',
         description: 'DriveMate Partner Wallet Top-Up',
         prefill: {
           name: profile?.name || 'DriveMate Partner',
@@ -149,15 +149,20 @@ export default function WalletScreen() {
         },
       });
       setIsProcessingPayment(false);
-      setRazorpayModalVisible(true);
+      setTimeout(() => {
+        setRazorpayModalVisible(true);
+      }, Platform.OS === 'web' ? 50 : 320);
     } catch (err: any) {
       setIsProcessingPayment(false);
-      setFeedback({
-        visible: true,
-        status: 'failed',
-        title: 'Order Creation Failed',
-        message: err?.response?.data?.message || err?.message || 'Could not initiate Razorpay order.',
-      });
+      setTopupModalVisible(false);
+      setTimeout(() => {
+        setFeedback({
+          visible: true,
+          status: 'failed',
+          title: 'Order Creation Failed',
+          message: err?.response?.data?.message || err?.message || 'Could not initiate Razorpay order.',
+        });
+      }, Platform.OS === 'web' ? 50 : 280);
     }
   };
 
@@ -174,24 +179,28 @@ export default function WalletScreen() {
       setRazorpayModalVisible(false);
       setCheckoutOrder(null);
 
-      setFeedback({
-        visible: true,
-        status: 'success',
-        title: 'Wallet Recharged!',
-        message: `₹${paidAmount.toFixed(2)} has been verified by Razorpay and added to your partner wallet.`,
-        reference: resp.razorpay_payment_id,
-      });
+      setTimeout(() => {
+        setFeedback({
+          visible: true,
+          status: 'success',
+          title: 'Wallet Recharged!',
+          message: `₹${paidAmount.toFixed(2)} has been verified by Razorpay and added to your partner wallet.`,
+          reference: resp.razorpay_payment_id,
+        });
+      }, Platform.OS === 'web' ? 50 : 280);
 
       await fetchWallet();
     } catch (err: any) {
       setIsProcessingPayment(false);
       setRazorpayModalVisible(false);
-      setFeedback({
-        visible: true,
-        status: 'failed',
-        title: 'Verification Failed',
-        message: err?.response?.data?.message || 'Payment verification failed.',
-      });
+      setTimeout(() => {
+        setFeedback({
+          visible: true,
+          status: 'failed',
+          title: 'Verification Failed',
+          message: err?.response?.data?.message || 'Payment verification failed.',
+        });
+      }, Platform.OS === 'web' ? 50 : 280);
     }
   };
 
@@ -204,23 +213,27 @@ export default function WalletScreen() {
       setIsProcessingPayment(false);
       setRazorpayModalVisible(false);
       setCheckoutOrder(null);
-      setFeedback({
-        visible: true,
-        status: 'success',
-        title: 'Test Payment Credited!',
-        message: `₹${amt.toFixed(2)} added to your partner wallet.`,
-        reference: simRes?.paymentId || orderId,
-      });
+      setTimeout(() => {
+        setFeedback({
+          visible: true,
+          status: 'success',
+          title: 'Test Payment Credited!',
+          message: `₹${amt.toFixed(2)} added to your partner wallet.`,
+          reference: simRes?.paymentId || orderId,
+        });
+      }, Platform.OS === 'web' ? 50 : 280);
       await fetchWallet();
     } catch (err: any) {
       setIsProcessingPayment(false);
       setRazorpayModalVisible(false);
-      setFeedback({
-        visible: true,
-        status: 'failed',
-        title: 'Top-Up Failed',
-        message: err?.response?.data?.message || 'Could not simulate test payment.',
-      });
+      setTimeout(() => {
+        setFeedback({
+          visible: true,
+          status: 'failed',
+          title: 'Top-Up Failed',
+          message: err?.response?.data?.message || 'Could not simulate test payment.',
+        });
+      }, Platform.OS === 'web' ? 50 : 280);
     }
   };
 
@@ -478,8 +491,9 @@ export default function WalletScreen() {
             })
           )}
         </Animated.View>
+      </ScrollView>
 
-        {/* MODAL 1: Add Money via Razorpay */}
+      {/* MODAL 1: Add Money via Razorpay */}
         <Modal visible={topupModalVisible} transparent animationType="slide">
           <View style={modalStyles.overlay}>
             <View style={modalStyles.content}>
@@ -673,27 +687,30 @@ export default function WalletScreen() {
             setRazorpayModalVisible(false);
             setCheckoutOrder(null);
             setIsProcessingPayment(false);
-            setFeedback({
-              visible: true,
-              status: 'cancelled',
-              title: 'Payment Cancelled',
-              message: reason || 'Payment was cancelled before completion.',
-            });
+            setTimeout(() => {
+              setFeedback({
+                visible: true,
+                status: 'cancelled',
+                title: 'Payment Cancelled',
+                message: reason || 'Payment was cancelled before completion.',
+              });
+            }, Platform.OS === 'web' ? 50 : 280);
           }}
           onError={(errMsg) => {
             setRazorpayModalVisible(false);
             setCheckoutOrder(null);
             setIsProcessingPayment(false);
-            setFeedback({
-              visible: true,
-              status: 'failed',
-              title: 'Payment Failed',
-              message: errMsg || 'Gateway payment could not be completed.',
-            });
+            setTimeout(() => {
+              setFeedback({
+                visible: true,
+                status: 'failed',
+                title: 'Payment Failed',
+                message: errMsg || 'Gateway payment could not be completed.',
+              });
+            }, Platform.OS === 'web' ? 50 : 280);
           }}
           onSimulateTestPayment={handleSimulateOfflineTest}
         />
-      </ScrollView>
     </SafeAreaView>
   );
 }

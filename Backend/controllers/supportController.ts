@@ -388,7 +388,7 @@ export const reviewEscalation = asyncHandler(async (req: AuthenticatedRequest, r
  * Overview statistics for Support Agent and Head of Support
  */
 export const getSupportMetrics = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const [totalTickets, openTickets, urgentCount, escalatedCount, resolvedToday] = await Promise.all([
+  const [totalTickets, openTickets, urgentCount, escalatedCount, resolvedToday, resolvedTickets] = await Promise.all([
     prisma.supportTicket.count(),
     prisma.supportTicket.count({ where: { status: { in: ['open', 'in_progress'] } } }),
     prisma.supportTicket.count({ where: { priority: 'urgent', status: { not: 'closed' } } }),
@@ -399,7 +399,24 @@ export const getSupportMetrics = asyncHandler(async (req: AuthenticatedRequest, 
         resolvedAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
       },
     }),
+    prisma.supportTicket.findMany({
+      where: { status: 'resolved', resolvedAt: { not: null } },
+      select: { createdAt: true, resolvedAt: true },
+      take: 100,
+      orderBy: { resolvedAt: 'desc' },
+    }),
   ]);
+
+  const avgResolutionMinutes = resolvedTickets.length > 0
+    ? Number(
+        (
+          resolvedTickets.reduce((sum, t) => {
+            const diffMs = Math.max(0, new Date(t.resolvedAt!).getTime() - new Date(t.createdAt).getTime());
+            return sum + diffMs / 60000;
+          }, 0) / resolvedTickets.length
+        ).toFixed(1)
+      )
+    : 0;
 
   res.status(200).json(
     new ApiResponse(
@@ -410,10 +427,57 @@ export const getSupportMetrics = asyncHandler(async (req: AuthenticatedRequest, 
         urgentCount,
         escalatedCount,
         resolvedToday,
-        avgFirstResponseMinutes: 4.8,
-        csatScore: 4.85,
+        avgFirstResponseMinutes: avgResolutionMinutes,
+        csatScore: null,
       },
       'Support metrics fetched successfully'
     )
   );
+});
+
+export const getSupportFaqs = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const role = String(req.query.role || 'customer').toLowerCase();
+  const faqs =
+    role === 'rider'
+      ? [
+          {
+            id: '1',
+            question: 'When will I receive my payout?',
+            answer: 'Earnings can be withdrawn from My Wallet at any time or settled in weekly payout batches.',
+          },
+          {
+            id: '2',
+            question: 'How does the 50-meter arrival geofence work?',
+            answer: 'You can mark pickup arrival or drop arrival once your GPS coordinates are within 50 meters of the target.',
+          },
+          {
+            id: '3',
+            question: 'How do waiting charges calculate?',
+            answer: 'Waiting charges apply automatically if wait duration exceeds the 3-minute free grace period after pickup arrival.',
+          },
+        ]
+      : [
+          {
+            id: '1',
+            question: 'How do I cancel my ride?',
+            answer: 'Open active ride controls and tap Cancel Ride before the trip starts.',
+          },
+          {
+            id: '2',
+            question: 'How does the DriveMate Wallet work?',
+            answer: 'Add funds securely via Razorpay UPI, Card, or NetBanking and pay seamlessly for rides.',
+          },
+          {
+            id: '3',
+            question: 'How is ride fare calculated?',
+            answer: 'Fares combine base fare, distance, trip duration, and live traffic/demand surge shown upfront before booking.',
+          },
+          {
+            id: '4',
+            question: 'How do I report a trip issue or lost item?',
+            answer: 'Open My Rides or Help & Support, select the trip, and submit a support claim or ticket.',
+          },
+        ];
+
+  res.status(200).json(new ApiResponse(200, faqs, 'FAQs fetched successfully'));
 });

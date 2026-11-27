@@ -19,6 +19,7 @@ import { StatusPill } from '../../../components/common/StatusPill';
 import { DetailModal } from '../../../components/common/DetailModal';
 import { QuickActionBtn } from '../../../components/common/QuickActionBtn';
 import { NotificationToast } from '../../../components/common/NotificationToast';
+import { adminApi } from '../../../api/adminApi';
 
 export function ManagerDashboard() {
   const [zones, setZones] = useState([]);
@@ -26,8 +27,8 @@ export function ManagerDashboard() {
     liveRidesCount: 0,
     activeSupplyDrivers: 0,
     activeCityZones: 0,
-    avgEtaMinutes: 3.8,
-    fulfillmentRate: '96.2%',
+    avgEtaMinutes: 0,
+    fulfillmentRate: '0.0%',
     activeSurgeZones: 0
   });
   const [loading, setLoading] = useState(true);
@@ -36,45 +37,42 @@ export function ManagerDashboard() {
   const [toast, setToast] = useState(null);
   const [processing, setProcessing] = useState(false);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-  const token = sessionStorage.getItem('vlt_master_token');
-  const authHeader = token ? { headers: { 'x-auth-token': token } } : {};
-
   const fetchOperationsData = useCallback(async () => {
     setLoading(true);
     try {
-      const [zonesRes, metricsRes] = await Promise.allSettled([
-        axios.get(`${API_URL}/operations/zones`, authHeader),
-        axios.get(`${API_URL}/operations/metrics`, authHeader)
+      const [zonesData, metricsData] = await Promise.all([
+        adminApi.getCityZones(),
+        adminApi.getOperationsMetrics(),
       ]);
 
-      if (zonesRes.status === 'fulfilled' && zonesRes.value.data?.data) {
-        const raw = zonesRes.value.data.data;
-        const mapped = (Array.isArray(raw) ? raw : []).map(z => ({
-          id: z.id,
-          rawId: z.id,
-          zone: z.name || 'City Sector',
-          demandLevel: z.demandLevel || 'Moderate',
-          activeDrivers: z.activeDrivers || 0,
-          pendingRiders: z.pendingRiders || 0,
-          surge: `${Number(z.surgeMultiplier || 1.0).toFixed(1)}x`,
-          surgeMultiplier: Number(z.surgeMultiplier || 1.0),
-          status: z.status === 'surge_active' || Number(z.surgeMultiplier) > 1.0 ? 'surge active' : 'normal'
-        }));
-        setZones(mapped);
-      } else {
-        setZones([]);
-      }
+      const raw = Array.isArray(zonesData) ? zonesData : [];
+      const mapped = raw.map((z) => ({
+        id: z.id,
+        rawId: z.id,
+        zone: z.name || 'City Sector',
+        demandLevel: z.demandLevel || 'Moderate',
+        activeDrivers: z.activeDrivers || 0,
+        pendingRiders: z.pendingRiders || 0,
+        surge: `${Number(z.surgeMultiplier || 1.0).toFixed(1)}x`,
+        surgeMultiplier: Number(z.surgeMultiplier || 1.0),
+        status: z.status === 'surge_active' || Number(z.surgeMultiplier) > 1.0 ? 'surge active' : 'normal'
+      }));
+      setZones(mapped);
 
-      if (metricsRes.status === 'fulfilled' && metricsRes.value.data?.data) {
-        setMetrics(metricsRes.value.data.data);
+      if (metricsData) {
+        setMetrics(metricsData);
       }
     } catch (err) {
       console.error('Failed to load operations data:', err);
+      setToast({
+        title: 'Load Error',
+        message: err.message || 'Unable to fetch operations data.',
+        type: 'error'
+      });
     } finally {
       setLoading(false);
     }
-  }, [API_URL, token]);
+  }, []);
 
   useEffect(() => {
     fetchOperationsData();
@@ -88,30 +86,14 @@ export function ManagerDashboard() {
 
     setProcessing(true);
     try {
-      await axios.patch(`${API_URL}/operations/zones/${targetId}/surge`, {
+      await adminApi.updateZoneSurge(targetId, {
         surgeMultiplier: multVal,
         demandLevel: newDemand,
         reason: 'Manager manual surge multiplier adjustment via operations console'
-      }, authHeader);
-
-      setZones(prev =>
-        prev.map(z =>
-          (z.rawId === targetId || z.id === targetId)
-            ? { ...z, surge: `${multVal.toFixed(1)}x`, surgeMultiplier: multVal, demandLevel: newDemand, status: multVal > 1.0 ? 'surge active' : 'normal' }
-            : z
-        )
-      );
-      setSelectedZone(null);
-      setToast({
-        title: 'Surge Pricing Updated',
-        message: `Surge in ${selectedZone.zone} set to ${multVal.toFixed(1)}x. Dispatched to customer pricing engine.`,
-        type: 'success'
       });
-      fetchOperationsData();
-    } catch (err) {
-      console.error('Surge update error:', err);
-      setZones(prev =>
-        prev.map(z =>
+
+      setZones((prev) =>
+        prev.map((z) =>
           (z.rawId === targetId || z.id === targetId)
             ? { ...z, surge: `${multVal.toFixed(1)}x`, surgeMultiplier: multVal, demandLevel: newDemand, status: multVal > 1.0 ? 'surge active' : 'normal' }
             : z
@@ -123,6 +105,14 @@ export function ManagerDashboard() {
         message: `Surge in ${selectedZone.zone} set to ${multVal.toFixed(1)}x.`,
         type: 'success'
       });
+      fetchOperationsData();
+    } catch (err) {
+      console.error('Surge update error:', err);
+      setToast({
+        title: 'Update Failed',
+        message: err.message || 'Could not update surge multiplier.',
+        type: 'error'
+      });
     } finally {
       setProcessing(false);
     }
@@ -131,12 +121,12 @@ export function ManagerDashboard() {
   const handleBroadcastIncentive = async () => {
     setProcessing(true);
     try {
-      await axios.post(`${API_URL}/operations/broadcasts`, {
+      await adminApi.createBroadcast({
         title: 'Peak Rain Surge Bonus: +₹50 Per Completed Ride',
         bonusAmount: 50,
         targetZone: selectedZone?.zone || 'All High-Demand City Zones',
         message: 'High demand alert. Complete trips in surge sectors to unlock instant driver cash bonuses.'
-      }, authHeader);
+      });
 
       setToast({
         title: 'Driver Surge Incentive Broadcasted',
@@ -146,9 +136,9 @@ export function ManagerDashboard() {
     } catch (err) {
       console.error('Broadcast error:', err);
       setToast({
-        title: 'Driver Incentive Broadcasted',
-        message: 'Incentive bonus broadcast dispatched to driver network.',
-        type: 'info'
+        title: 'Broadcast Failed',
+        message: err.message || 'Could not send driver incentive broadcast.',
+        type: 'error'
       });
     } finally {
       setProcessing(false);
@@ -277,7 +267,7 @@ export function ManagerDashboard() {
           subtitle="Available for matching"
           icon={Car}
           color="emerald"
-          trend={`${metrics.fulfillmentRate || '96.2%'} fulfillment`}
+          trend={`${metrics.fulfillmentRate || '0.0%'} fulfillment`}
           trendType="up"
         />
         <MetricCard
@@ -291,7 +281,7 @@ export function ManagerDashboard() {
         />
         <MetricCard
           title="Avg Dispatch ETA"
-          value={`${metrics.avgEtaMinutes || 3.8} mins`}
+          value={`${metrics.avgEtaMinutes ?? 0} mins`}
           subtitle="Metropolitan dispatch benchmark"
           icon={Clock}
           color="cyan"

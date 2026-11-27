@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ShieldCheck, Lock, Mail, Loader2, ArrowRight, AlertCircle, Sparkles } from 'lucide-react';
-import axios from 'axios';
+import { adminApi } from '../../api/adminApi';
 import { useRole } from '../../context/RoleContext';
 
 export function AdminLogin() {
-  const [email, setEmail] = useState('admin@drivemate.com');
-  const [password, setPassword] = useState('admin123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
@@ -18,13 +18,12 @@ export function AdminLogin() {
     setError('');
 
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-      const response = await axios.post(`${API_URL}/admin/login`, {
+      const result = await adminApi.login({
         email: email.trim().toLowerCase(),
         password,
       });
 
-      const { user, token } = response.data.data;
+      const { user, token } = result || {};
       if (!token || !user) {
         throw new Error('Authentication response did not contain access token');
       }
@@ -33,12 +32,7 @@ export function AdminLogin() {
       navigate('/master/dashboard');
     } catch (err: any) {
       console.error('Admin login error:', err);
-      const message =
-        err.response?.data?.message ||
-        err.response?.data?.msg ||
-        err.message ||
-        'Invalid admin credentials or server unavailable';
-      setError(message);
+      setError(err?.message || 'Invalid admin credentials or server unavailable');
     } finally {
       setLoading(false);
     }

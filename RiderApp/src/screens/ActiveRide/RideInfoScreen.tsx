@@ -19,9 +19,9 @@ export default function RideInfoScreen({ navigation, route }: any) {
 
   const pickup = ride?.pickup?.address || 'Pickup Location';
   const dropoff = ride?.drop?.address || 'Dropoff Location';
-  const fare = ride?.fare ? `₹${ride.fare}` : '₹150.00';
-  const distance = ride?.distance ? `${ride.distance} km` : '4.2 km';
-  const estTime = ride?.duration ? `${ride.duration} mins` : '15 mins';
+  const fare = ride?.fare !== undefined ? `₹${ride.fare}` : '₹0';
+  const distance = ride?.distance !== undefined ? `${ride.distance} km` : '0 km';
+  const estTime = ride?.duration !== undefined ? `${ride.duration} mins` : '0 mins';
   const rideType = ride?.vehicleType ? `DriveMate ${ride.vehicleType.toUpperCase()}` : 'DriveMate Standard';
 
   return (

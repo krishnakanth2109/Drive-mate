@@ -25,7 +25,7 @@ export interface Ride {
   fare: number;
   distance: number;
   duration: string;
-  status: 'pending' | 'accepted' | 'ongoing' | 'completed' | 'cancelled';
+  status: 'pending' | 'accepted' | 'arrived' | 'ongoing' | 'drop_arrived' | 'completed' | 'cancelled';
   createdAt: string;
 }
 

@@ -17,7 +17,7 @@ import {
   Check
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import axios from 'axios';
+import { communityApi } from '../../api/communityApi';
 
 const CITIES = [
   'Bangalore',
@@ -37,19 +37,19 @@ const INDUSTRIES = [
   'Automotive & EV',
 ];
 
-export function UserDetailsView({ userProfile, onProfileUpdated, API_URL, theme = 'dark' }) {
+export function UserDetailsView({ userProfile, onProfileUpdated, theme = 'dark' }) {
   const isDark = theme === 'dark';
 
   const [formData, setFormData] = useState({
-    firstName: userProfile?.firstName || userProfile?.name?.split(' ')[0] || 'Alex',
-    lastName: userProfile?.lastName || userProfile?.name?.split(' ').slice(1).join(' ') || 'Carter',
-    email: userProfile?.email || 'testuser@drivemate.com',
-    phone: userProfile?.phone || '+91 98845 22109',
-    profession: userProfile?.profession || 'Lead Cloud Architect',
-    company: userProfile?.company || 'Tech Mahindra / Whitefield',
-    industry: userProfile?.industry || 'Technology & Software',
-    city: userProfile?.city || 'Bangalore',
-    purpose: userProfile?.purpose || 'Daily Commute & Sustainable BikePooling',
+    firstName: userProfile?.firstName || userProfile?.name?.split(' ')[0] || '',
+    lastName: userProfile?.lastName || userProfile?.name?.split(' ').slice(1).join(' ') || '',
+    email: userProfile?.email || '',
+    phone: userProfile?.phone || '',
+    profession: userProfile?.profession || '',
+    company: userProfile?.company || '',
+    industry: userProfile?.industry || '',
+    city: userProfile?.city || '',
+    purpose: userProfile?.purpose || '',
   });
 
   const [loading, setLoading] = useState(false);
@@ -66,24 +66,19 @@ export function UserDetailsView({ userProfile, onProfileUpdated, API_URL, theme 
     setLoading(true);
     setError('');
 
-    const token = sessionStorage.getItem('dm_user_token');
-
     try {
-      const res = await axios.put(`${API_URL}/auth/profile`, formData, {
-        headers: token ? { 'x-auth-token': token } : {},
-      });
-
-      if (res.data?.data) {
+      const updated = await communityApi.updateMyProfile(formData);
+      if (updated) {
         setSuccess(true);
-        sessionStorage.setItem('dm_user_profile', JSON.stringify(res.data.data));
+        sessionStorage.setItem('dm_user_profile', JSON.stringify(updated));
         if (onProfileUpdated) {
-          onProfileUpdated(res.data.data);
+          onProfileUpdated(updated);
         }
         setTimeout(() => setSuccess(false), 3500);
       }
     } catch (err) {
       console.error('Failed to update profile:', err);
-      setError(err.response?.data?.message || 'Failed to update profile details.');
+      setError(err.message || 'Failed to update profile details.');
     } finally {
       setLoading(false);
     }

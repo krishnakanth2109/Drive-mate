@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
+import { motion } from 'framer-motion';
+import { communityApi } from '../../api/communityApi';
+import { API_BASE_URL } from '../../api/client';
 import {
   Wallet,
   PlusCircle,
@@ -15,7 +17,6 @@ import {
   Receipt,
   Sparkles,
 } from 'lucide-react';
-import { motion } from 'framer-motion';
 
 interface WalletData {
   walletId: string;
@@ -59,7 +60,7 @@ declare global {
 
 export function WalletView({
   userProfile,
-  API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  API_URL = API_BASE_URL,
   theme = 'dark',
   socket,
 }: WalletViewProps) {
@@ -106,23 +107,19 @@ export function WalletView({
 
   const fetchWallet = useCallback(async () => {
     try {
-      const res = await axios.get(`${API_URL}/wallet`, { headers: getAuthHeaders() });
-      const data = res.data?.data ?? res.data;
+      const data = await communityApi.getWallet();
       if (data) setWallet(data);
     } catch (err: any) {
       console.error('Failed to load wallet:', err);
     }
-  }, [API_URL]);
+  }, []);
 
   const fetchTransactions = useCallback(
     async (targetPage = 1, filter = activeFilter, append = false) => {
       try {
-        const typeParam = filter === 'ALL' ? '' : `&type=${filter}`;
-        const res = await axios.get(
-          `${API_URL}/wallet/transactions?page=${targetPage}&limit=12${typeParam}`,
-          { headers: getAuthHeaders() }
-        );
-        const data = res.data?.data ?? res.data;
+        const params: Record<string, string> = { page: String(targetPage), limit: '12' };
+        if (filter !== 'ALL') params.type = filter;
+        const data = await communityApi.getWalletTransactions(params);
         if (data?.items) {
           setTransactions((prev) => (append ? [...prev, ...data.items] : data.items));
           setPage(data.pagination?.currentPage || targetPage);
@@ -133,7 +130,7 @@ export function WalletView({
         console.error('Failed to load transactions:', err);
       }
     },
-    [API_URL, activeFilter]
+    [activeFilter]
   );
 
   const refreshAll = useCallback(async () => {
@@ -198,24 +195,16 @@ export function WalletView({
     setStatusBanner(null);
 
     try {
-      // 1. Create Razorpay Order on Backend
-      const orderRes = await axios.post(
-        `${API_URL}/wallet/topup/order`,
-        { amount: numericAmount, currency: 'INR' },
-        { headers: getAuthHeaders() }
-      );
-      const orderData = orderRes.data?.data ?? orderRes.data;
+      const orderData = await communityApi.createTopupOrder(numericAmount);
 
       if (!orderData?.orderId) {
         throw new Error('Could not create Razorpay payment order.');
       }
 
-      // 2. Ensure Razorpay Web Checkout JS is loaded
       await ensureRazorpayLoaded();
 
-      // 3. Open Razorpay Checkout UI
       const options = {
-        key: orderData.keyId,
+        key: orderData.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID,
         amount: orderData.amountPaise || Math.round(numericAmount * 100),
         currency: orderData.currency || 'INR',
         name: 'DriveMate',
@@ -223,25 +212,19 @@ export function WalletView({
         order_id: orderData.orderId,
         prefill: {
           name: userProfile?.name || 'DriveMate Member',
-          email: userProfile?.email || 'commuter@drivemate.com',
-          contact: userProfile?.phone || '9876543210',
+          email: userProfile?.email || '',
+          contact: userProfile?.phone || '',
         },
         theme: {
           color: '#38c6ec',
         },
         handler: async (response: any) => {
           try {
-            // 4. Verify Cryptographic HMAC Signature on Backend
-            const verifyRes = await axios.post(
-              `${API_URL}/wallet/topup/verify`,
-              {
-                razorpay_order_id: response.razorpay_order_id || orderData.orderId,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-              },
-              { headers: getAuthHeaders() }
-            );
-            const verifyData = verifyRes.data?.data ?? verifyRes.data;
+            const verifyData = await communityApi.verifyTopupPayment({
+              razorpay_order_id: response.razorpay_order_id || orderData.orderId,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            });
 
             setStatusBanner({
               type: 'success',

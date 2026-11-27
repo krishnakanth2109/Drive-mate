@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import axios from 'axios';
+import { api } from '../services/api';
 
 interface InRideSupportModalProps {
   visible: boolean;
@@ -178,8 +178,7 @@ export default function InRideSupportModal({
   const handleSubmitTicket = async (issue: typeof CUSTOMER_SUPPORT_OPTIONS[0]) => {
     setIsSubmitting(true);
     try {
-      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000';
-      const res = await axios.post(`${apiUrl}/api/support/tickets`, {
+      const res: any = await api.post('/support/tickets', {
         userId,
         userType: 'Customer',
         userName,
@@ -191,7 +190,7 @@ export default function InRideSupportModal({
         priority: issue.priority,
       });
 
-      const ticketNo = res.data?.data?.ticketNumber || 'TK-SUPPORT';
+      const ticketNo = res.data?.ticketNumber || res.data?.data?.ticketNumber || 'TK-SUPPORT';
       setTicketSubmitted(ticketNo);
       Alert.alert(
         'Support Ticket Raised',

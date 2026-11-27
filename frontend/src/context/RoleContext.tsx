@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import axios from 'axios';
+import { adminApi } from '../api/adminApi';
 
 export interface AdminUser {
   id: string;
@@ -67,34 +67,28 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
       try {
         return JSON.parse(saved);
       } catch (e) {
-        return ['all', '*'];
+        return [];
       }
     }
-    return ['all', '*'];
+    return [];
   });
 
-  const fetchEffectivePermissions = async (token: string) => {
+  const fetchEffectivePermissions = async () => {
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-      const res = await axios.get(`${API_URL}/rbac/my-permissions`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'x-auth-token': token,
-        },
-      });
-      if (res.data?.data) {
-        setUserPermissions(res.data.data);
-        sessionStorage.setItem('vlt_master_permissions', JSON.stringify(res.data.data));
+      const perms = await adminApi.getMyPermissions();
+      if (Array.isArray(perms)) {
+        setUserPermissions(perms);
+        sessionStorage.setItem('vlt_master_permissions', JSON.stringify(perms));
       }
     } catch (_) {
-      setUserPermissions(['all', '*']);
+      setUserPermissions([]);
     }
   };
 
   useEffect(() => {
     const token = sessionStorage.getItem('vlt_master_token');
     if (token && currentUser) {
-      fetchEffectivePermissions(token);
+      fetchEffectivePermissions();
     }
   }, [currentUser]);
 
@@ -102,7 +96,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
     sessionStorage.setItem('vlt_master_token', token);
     sessionStorage.setItem('vlt_master_user', JSON.stringify(user));
     setCurrentUser(user);
-    fetchEffectivePermissions(token);
+    fetchEffectivePermissions();
   };
 
   const logout = () => {
@@ -129,7 +123,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
   const refreshPermissions = async () => {
     const token = sessionStorage.getItem('vlt_master_token');
     if (token) {
-      await fetchEffectivePermissions(token);
+      await fetchEffectivePermissions();
     }
   };
 

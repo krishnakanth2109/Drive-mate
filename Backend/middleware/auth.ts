@@ -25,7 +25,10 @@ export const authMiddleware = (req: AuthenticatedRequest, res: Response, next: N
   }
 
   if (!token) {
-    return res.status(401).json({ msg: 'No token, authorization denied' });
+    return res.status(401).json({
+      msg: 'No token, authorization denied',
+      message: 'Please log in to access your wallet',
+    });
   }
 
   try {
@@ -36,7 +39,10 @@ export const authMiddleware = (req: AuthenticatedRequest, res: Response, next: N
     }
     next();
   } catch (err) {
-    res.status(401).json({ msg: 'Token is not valid' });
+    res.status(401).json({
+      msg: 'Token is not valid',
+      message: 'Session expired. Please log in again.',
+    });
   }
 };
 

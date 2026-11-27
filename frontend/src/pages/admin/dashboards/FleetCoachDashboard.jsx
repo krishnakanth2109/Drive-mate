@@ -20,6 +20,7 @@ import { StatusPill } from '../../../components/common/StatusPill';
 import { DetailModal } from '../../../components/common/DetailModal';
 import { QuickActionBtn } from '../../../components/common/QuickActionBtn';
 import { NotificationToast } from '../../../components/common/NotificationToast';
+import { adminApi } from '../../../api/adminApi';
 
 export function FleetCoachDashboard() {
   const [applicants, setApplicants] = useState([]);
@@ -27,60 +28,58 @@ export function FleetCoachDashboard() {
     activeFleetDrivers: 0,
     inOnboardingPipeline: 0,
     inspectionsCount: 0,
-    fleetComplianceRate: '98.4%',
-    avgDriverRating: 4.86
+    fleetComplianceRate: '0.0%',
+    avgDriverRating: 0
   });
   const [loading, setLoading] = useState(true);
   const [selectedDriver, setSelectedDriver] = useState(null);
   const [toast, setToast] = useState(null);
   const [processing, setProcessing] = useState(false);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-  const token = sessionStorage.getItem('vlt_master_token');
-  const authHeader = token ? { headers: { 'x-auth-token': token } } : {};
-
   const fetchFleetData = useCallback(async () => {
     setLoading(true);
     try {
-      const [onboardingRes, metricsRes] = await Promise.allSettled([
-        axios.get(`${API_URL}/fleet/onboarding`, authHeader),
-        axios.get(`${API_URL}/fleet/metrics`, authHeader)
+      const [rawOnboarding, metricsData] = await Promise.all([
+        adminApi.getFleetOnboarding(),
+        adminApi.getFleetMetrics(),
       ]);
 
-      if (onboardingRes.status === 'fulfilled' && onboardingRes.value.data?.data) {
-        const raw = onboardingRes.value.data.data;
-        const mapped = (Array.isArray(raw) ? raw : []).map(d => ({
-          id: d.id ? `DRV-${d.id.slice(-4).toUpperCase()}` : 'DRV-100',
-          rawId: d.id,
-          name: d.driverName || 'Driver Applicant',
-          phone: d.driverPhone || 'N/A',
-          vehicle: d.vehicleDetails ? `${d.vehicleDetails.make || ''} ${d.vehicleDetails.model || ''} (${d.vehicleDetails.plateNumber || 'KA-01-AB-1234'})`.trim() : (d.vehicleType || 'Bike'),
-          vehicleType: d.vehicleType || 'bike',
-          experience: '3+ Years',
-          docsStatus: {
-            dl: d.dlStatus || 'Pending Review',
-            rc: d.rcStatus || 'Pending Review',
-            aadhar: d.aadharStatus || 'Pending Review',
-            policeVerification: d.policeVerificationStatus || 'Required'
-          },
-          trainingStatus: d.trainingStatus || 'Module 1/4',
-          overallStatus: d.overallStatus?.replace('_', ' ')?.toLowerCase() || 'pending review',
-          appliedDate: d.createdAt ? new Date(d.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : 'Recent'
-        }));
-        setApplicants(mapped);
-      } else {
-        setApplicants([]);
-      }
+      const mapped = (Array.isArray(rawOnboarding) ? rawOnboarding : []).map((d) => ({
+        id: d.id ? `DRV-${d.id.slice(-4).toUpperCase()}` : 'DRV',
+        rawId: d.id,
+        name: d.driverName || 'Driver Applicant',
+        phone: d.driverPhone || 'N/A',
+        vehicle: d.vehicleDetails
+          ? `${d.vehicleDetails.make || ''} ${d.vehicleDetails.model || ''} (${d.vehicleDetails.plateNumber || d.vehicleDetails.plate || 'Not set'})`.trim()
+          : (d.vehicleType || 'Not set'),
+        vehicleType: d.vehicleType || 'bike',
+        experience: d.experience || '',
+        docsStatus: {
+          dl: d.dlStatus || 'Pending Review',
+          rc: d.rcStatus || 'Pending Review',
+          aadhar: d.aadharStatus || 'Pending Review',
+          policeVerification: d.policeVerificationStatus || 'Required'
+        },
+        trainingStatus: d.trainingStatus || 'Not Started',
+        overallStatus: d.overallStatus?.replace('_', ' ')?.toLowerCase() || 'pending review',
+        appliedDate: d.createdAt ? new Date(d.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : ''
+      }));
+      setApplicants(mapped);
 
-      if (metricsRes.status === 'fulfilled' && metricsRes.value.data?.data) {
-        setMetrics(metricsRes.value.data.data);
+      if (metricsData) {
+        setMetrics(metricsData);
       }
     } catch (err) {
       console.error('Failed to load fleet coach data:', err);
+      setToast({
+        title: 'Failed to Load Fleet Data',
+        message: err.message || 'Unable to fetch onboarding pipeline.',
+        type: 'error'
+      });
     } finally {
       setLoading(false);
     }
-  }, [API_URL, token]);
+  }, []);
 
   useEffect(() => {
     fetchFleetData();
@@ -90,17 +89,17 @@ export function FleetCoachDashboard() {
     const targetId = driver.rawId || driver.id;
     setProcessing(true);
     try {
-      await axios.patch(`${API_URL}/fleet/onboarding/${targetId}`, {
+      await adminApi.updateFleetOnboarding(targetId, {
         overallStatus: 'approved',
         trainingStatus: 'Completed (100%)',
         dlStatus: 'Approved',
         rcStatus: 'Approved',
         aadharStatus: 'Approved',
         policeVerificationStatus: 'Approved'
-      }, authHeader);
+      });
 
-      setApplicants(prev =>
-        prev.map(d => (d.rawId === targetId || d.id === targetId ? { ...d, overallStatus: 'approved', trainingStatus: 'Completed (100%)' } : d))
+      setApplicants((prev) =>
+        prev.map((d) => (d.rawId === targetId || d.id === targetId ? { ...d, overallStatus: 'approved', trainingStatus: 'Completed (100%)' } : d))
       );
       setSelectedDriver(null);
       setToast({
@@ -111,14 +110,10 @@ export function FleetCoachDashboard() {
       fetchFleetData();
     } catch (err) {
       console.error('Approve error:', err);
-      setApplicants(prev =>
-        prev.map(d => (d.rawId === targetId || d.id === targetId ? { ...d, overallStatus: 'approved', trainingStatus: 'Completed (100%)' } : d))
-      );
-      setSelectedDriver(null);
       setToast({
-        title: 'Driver Approved',
-        message: `${driver.name} marked as approved.`,
-        type: 'success'
+        title: 'Approval Failed',
+        message: err.message || 'Could not update onboarding status.',
+        type: 'error'
       });
     } finally {
       setProcessing(false);
@@ -129,30 +124,26 @@ export function FleetCoachDashboard() {
     const targetId = driver.rawId || driver.id;
     setProcessing(true);
     try {
-      await axios.patch(`${API_URL}/fleet/onboarding/${targetId}`, {
+      await adminApi.updateFleetOnboarding(targetId, {
         overallStatus: 'rejected'
-      }, authHeader);
+      });
 
-      setApplicants(prev =>
-        prev.map(d => (d.rawId === targetId || d.id === targetId ? { ...d, overallStatus: 'rejected' } : d))
+      setApplicants((prev) =>
+        prev.map((d) => (d.rawId === targetId || d.id === targetId ? { ...d, overallStatus: 'rejected' } : d))
       );
       setSelectedDriver(null);
       setToast({
         title: 'Application Rejected',
-        message: `${driver.name}'s onboarding file was rejected due to document compliance failures.`,
+        message: `${driver.name}'s onboarding file was rejected.`,
         type: 'info'
       });
       fetchFleetData();
     } catch (err) {
       console.error('Reject error:', err);
-      setApplicants(prev =>
-        prev.map(d => (d.rawId === targetId || d.id === targetId ? { ...d, overallStatus: 'rejected' } : d))
-      );
-      setSelectedDriver(null);
       setToast({
-        title: 'Application Rejected',
-        message: `${driver.name} onboarding rejected.`,
-        type: 'info'
+        title: 'Action Failed',
+        message: err.message || 'Could not reject driver application.',
+        type: 'error'
       });
     } finally {
       setProcessing(false);
@@ -281,8 +272,8 @@ export function FleetCoachDashboard() {
         />
         <MetricCard
           title="Fleet Compliance"
-          value={metrics.fleetComplianceRate || '98.4%'}
-          subtitle={`Rating: ${metrics.avgDriverRating || 4.86} ★`}
+          value={metrics.fleetComplianceRate || '0.0%'}
+          subtitle={`Rating: ${metrics.avgDriverRating ?? 0} ★`}
           icon={ShieldAlert}
           color="purple"
           trend="Compliant"

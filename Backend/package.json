@@ -10,8 +10,7 @@
     "start": "node dist/server.js",
     "dev": "tsx watch server.ts",
     "type-check": "tsc --noEmit",
-    "test:reports": "tsx scripts/testReports.ts",
-    "test": "tsc --noEmit && tsx scripts/testReports.ts",
+    "test": "tsc --noEmit && tsx --test tests/*.test.ts",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
     "migrate:data": "tsx scripts/migrateMongoToPostgres.ts"

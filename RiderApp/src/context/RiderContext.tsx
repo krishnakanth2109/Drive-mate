@@ -4,21 +4,54 @@ import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api, socket, connectSocket } from '../services/api';
 import { Ride } from '../services/types';
+import { DriverGpsSnapshot, evaluateDriverGeofence } from '../utils/geofence';
+
+export interface RiderSurgeHotZone {
+  id: string;
+  name: string;
+  city: string;
+  demandLevel: string;
+  surgeMultiplier: number;
+  activeDrivers: number;
+  pendingRiders: number;
+  status: string;
+  reason?: string | null;
+}
+
+export interface RiderSurgeStatus {
+  multiplier: number;
+  isSurgeActive: boolean;
+  demandLevel: 'Low' | 'Moderate' | 'High' | 'Extreme';
+  trafficLevel: 'Smooth' | 'Moderate' | 'Heavy' | 'Severe';
+  trafficDelayMinutes: number;
+  trafficSpeedKmh: number;
+  activeRequestsNearby: number;
+  availableDriversNearby: number;
+  reason: string;
+  hotZones?: RiderSurgeHotZone[];
+  updatedAt?: string;
+}
 
 interface RiderContextType {
   isOnline: boolean;
   location: any;
+  driverGps: DriverGpsSnapshot | null;
+  isArrivalSubmitting: boolean;
   googleMapsKey: string | null;
   incomingRequest: Ride | null;
   activeRide: Ride | null;
+  surgeStatus: RiderSurgeStatus | null;
+  refreshSurgeStatus: () => Promise<RiderSurgeStatus | null>;
+  refreshCurrentGps: () => Promise<DriverGpsSnapshot | null>;
   setActiveRide: (ride: Ride | null) => void;
   refreshActiveRide: () => Promise<void>;
   toggleOnline: () => void;
   acceptRide: () => void;
   rejectRide: () => void;
   arriveAtPickup: () => Promise<boolean>;
+  arriveAtDrop: () => Promise<boolean>;
   startRide: (otp: string) => Promise<boolean>;
-  completeRide: () => void;
+  completeRide: () => Promise<boolean>;
   logout: (nav: any) => void;
 }
 
@@ -27,57 +60,133 @@ const RiderContext = createContext<RiderContextType>({} as RiderContextType);
 export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
   const [isOnline, setIsOnline] = useState(false);
   const [location, setLocation] = useState<any>(null);
+  const [driverGps, setDriverGps] = useState<DriverGpsSnapshot | null>(null);
+  const [isArrivalSubmitting, setIsArrivalSubmitting] = useState(false);
   const [googleMapsKey, setGoogleMapsKey] = useState<string | null>('AIzaSyDOMtmUqwZCLcEHSGQI4WpBLnvBiEPmX2E');
   const [incomingRequest, setIncomingRequest] = useState<Ride | null>(null);
   const [activeRide, setActiveRide] = useState<Ride | null>(null);
-  
-  // Interval & Timeout references
+  const [surgeStatus, setSurgeStatus] = useState<RiderSurgeStatus | null>(null);
+
+  // Interval, watcher & submission-lock references
   const locationInterval = useRef<any>(null);
+  const activeWatchSubscription = useRef<Location.LocationSubscription | null>(null);
+  const lastServerSyncAtRef = useRef<number>(0);
+  const arrivalSubmittingRef = useRef<boolean>(false);
   const requestTimeout = useRef<any>(null);
+
+  const applyLocationReading = (
+    loc: Location.LocationObject,
+    permissionStatus: 'granted' | 'denied' | 'undetermined' = 'granted',
+    servicesEnabled: boolean = true
+  ): DriverGpsSnapshot => {
+    const snapshot: DriverGpsSnapshot = {
+      latitude: loc.coords.latitude,
+      longitude: loc.coords.longitude,
+      heading: loc.coords.heading ?? 0,
+      accuracy: loc.coords.accuracy ?? null,
+      timestamp: typeof loc.timestamp === 'number' ? loc.timestamp : Date.now(),
+      isMocked: Boolean((loc as any).mocked),
+      permissionStatus,
+      servicesEnabled,
+      error: null,
+    };
+    setDriverGps(snapshot);
+    setLocation({
+      latitude: loc.coords.latitude,
+      longitude: loc.coords.longitude,
+      latitudeDelta: 0.05,
+      longitudeDelta: 0.05,
+    });
+    return snapshot;
+  };
+
+  const refreshCurrentGps = async (): Promise<DriverGpsSnapshot | null> => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        const deniedSnapshot: DriverGpsSnapshot = {
+          latitude: null,
+          longitude: null,
+          accuracy: null,
+          timestamp: null,
+          isMocked: false,
+          permissionStatus: 'denied',
+          servicesEnabled: true,
+          error: 'Location permission denied. Enable GPS access in device settings.',
+        };
+        setDriverGps(deniedSnapshot);
+        return deniedSnapshot;
+      }
+
+      const servicesEnabled = await Location.hasServicesEnabledAsync().catch(() => true);
+      if (!servicesEnabled) {
+        const disabledSnapshot: DriverGpsSnapshot = {
+          latitude: null,
+          longitude: null,
+          accuracy: null,
+          timestamp: null,
+          isMocked: false,
+          permissionStatus: 'granted',
+          servicesEnabled: false,
+          error: 'Device GPS/Location services are switched off.',
+        };
+        setDriverGps(disabledSnapshot);
+        return disabledSnapshot;
+      }
+
+      const currentLoc = (await Promise.race([
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.BestForNavigation }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('GPS fix timed out')), 7000)),
+      ])) as Location.LocationObject;
+
+      if (currentLoc?.coords) {
+        return applyLocationReading(currentLoc, 'granted', true);
+      }
+      return null;
+    } catch (err: any) {
+      const errSnapshot: DriverGpsSnapshot = {
+        latitude: null,
+        longitude: null,
+        accuracy: null,
+        timestamp: null,
+        isMocked: false,
+        permissionStatus: 'granted',
+        servicesEnabled: true,
+        error: err?.message || 'Unable to obtain current GPS fix.',
+      };
+      setDriverGps(errSnapshot);
+      return errSnapshot;
+    }
+  };
 
   // 1. Initial Permission & Current Location
   useEffect(() => {
     (async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
+      const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission denied', 'Enable location to receive rides');
+        setDriverGps({
+          latitude: null,
+          longitude: null,
+          accuracy: null,
+          timestamp: null,
+          isMocked: false,
+          permissionStatus: 'denied',
+          servicesEnabled: true,
+          error: 'Location permission denied. Enable GPS to accept rides and verify arrival.',
+        });
+        Alert.alert('Permission denied', 'Enable location to receive rides and verify arrival.');
         return;
       }
       try {
-        // Fast path: use last known position immediately to get past loading screen
-        let loc = await Location.getLastKnownPositionAsync({});
-        if (loc) {
-          setLocation({
-            latitude: loc.coords.latitude,
-            longitude: loc.coords.longitude,
-            latitudeDelta: 0.05,
-            longitudeDelta: 0.05,
-          });
+        // Fast path for map camera only; geofence keeps exact timestamp so stale cache cannot verify arrival
+        const lastKnown = await Location.getLastKnownPositionAsync({});
+        if (lastKnown?.coords) {
+          applyLocationReading(lastKnown, 'granted', true);
         }
-        
-        // Accurate path: attempt to get current position with a 5-second timeout
-        const currentLoc = await Promise.race([
-          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
-        ]) as any;
 
-        if (currentLoc) {
-            setLocation({
-                latitude: currentLoc.coords.latitude,
-                longitude: currentLoc.coords.longitude,
-                latitudeDelta: 0.05,
-                longitudeDelta: 0.05,
-            });
-        }
+        await refreshCurrentGps();
       } catch (e) {
-        console.log("Location fetch error/timeout on init", e);
-        // If location is STILL null, set a fallback location (e.g. New Delhi) so the app loads
-        setLocation((prev: any) => prev || {
-            latitude: 28.6139,
-            longitude: 77.2090,
-            latitudeDelta: 0.05,
-            longitudeDelta: 0.05,
-        });
+        console.log('Location fetch error/timeout on init', e);
       }
     })();
 
@@ -143,51 +252,118 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, [isOnline, activeRide, incomingRequest]);
 
-  const startLocationUpdates = () => {
-    if(locationInterval.current) clearInterval(locationInterval.current);
-    
-    locationInterval.current = setInterval(async () => {
-        try {
-            const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-            const { latitude, longitude, heading } = loc.coords;
-            
-            setLocation((prev: any) => ({
-                ...prev,
-                latitude,
-                longitude
-            }));
+  // High-accuracy GPS watch ONLY during active rides so 50m geofence responds promptly without idling battery
+  useEffect(() => {
+    let cancelled = false;
 
-            // Send to Backend
-            try {
-                await api.put('/users/location', { lat: latitude, lng: longitude, heading });
-                
-                // If active ride, send to customer via socket
-                if(activeRide) {
-                    socket.emit('driver_location_update', {
-                        rideId: activeRide._id,
-                        lat: latitude,
-                        lng: longitude,
-                        heading
-                    });
-                }
-            } catch(e) { console.log("Loc Update Error"); }
-        } catch (e) {
-            console.log("Interval location fetch error", e);
+    const startActiveWatch = async () => {
+      if (activeWatchSubscription.current) {
+        activeWatchSubscription.current.remove();
+        activeWatchSubscription.current = null;
+      }
+      if (!activeRide) return;
+
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setDriverGps((prev) => ({
+          latitude: prev?.latitude ?? null,
+          longitude: prev?.longitude ?? null,
+          accuracy: prev?.accuracy ?? null,
+          timestamp: prev?.timestamp ?? null,
+          isMocked: false,
+          permissionStatus: 'denied',
+          servicesEnabled: true,
+          error: 'Location permission denied.',
+        }));
+        return;
+      }
+
+      const sub = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.BestForNavigation,
+          timeInterval: 3000,
+          distanceInterval: 5,
+        },
+        (loc) => {
+          if (cancelled || !loc?.coords) return;
+          applyLocationReading(loc, 'granted', true);
+
+          const rideId = activeRide._id || (activeRide as any).id;
+          if (rideId) {
+            socket.emit('driver_location_update', {
+              rideId,
+              lat: loc.coords.latitude,
+              lng: loc.coords.longitude,
+              heading: loc.coords.heading || 0,
+            });
+          }
+
+          const now = Date.now();
+          if (now - lastServerSyncAtRef.current >= 8000) {
+            lastServerSyncAtRef.current = now;
+            api
+              .put('/users/location', {
+                lat: loc.coords.latitude,
+                lng: loc.coords.longitude,
+                heading: loc.coords.heading || 0,
+              })
+              .catch(() => {});
+          }
         }
+      );
 
-    }, 10000); // 10 Seconds
+      if (cancelled) {
+        sub.remove();
+      } else {
+        activeWatchSubscription.current = sub;
+      }
+    };
+
+    startActiveWatch().catch(() => {});
+
+    return () => {
+      cancelled = true;
+      if (activeWatchSubscription.current) {
+        activeWatchSubscription.current.remove();
+        activeWatchSubscription.current = null;
+      }
+    };
+  }, [activeRide?._id, (activeRide as any)?.id]);
+
+  const startLocationUpdates = () => {
+    if (locationInterval.current) clearInterval(locationInterval.current);
+
+    // Lighter 10s balanced polling when idle online (active watch handles activeRide precision)
+    locationInterval.current = setInterval(async () => {
+      if (activeRide) return;
+      try {
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        if (loc?.coords) {
+          applyLocationReading(loc, 'granted', true);
+          await api.put('/users/location', {
+            lat: loc.coords.latitude,
+            lng: loc.coords.longitude,
+            heading: loc.coords.heading || 0,
+          });
+        }
+      } catch (e) {
+        console.log('Interval location fetch error', e);
+      }
+    }, 10000);
   };
 
   const stopLocationUpdates = () => {
-    if(locationInterval.current) {
-        clearInterval(locationInterval.current);
-        locationInterval.current = null;
+    if (locationInterval.current) {
+      clearInterval(locationInterval.current);
+      locationInterval.current = null;
     }
   };
 
   const toggleOnline = async () => {
-    if (!location) return Alert.alert("Wait", "Fetching GPS...");
-    setIsOnline(!isOnline);
+    if (!location && !driverGps?.latitude) {
+      await refreshCurrentGps();
+    }
+    setIsOnline((prev) => !prev);
   };
 
   const acceptRide = async () => {
@@ -195,62 +371,109 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
     if (requestTimeout.current) clearTimeout(requestTimeout.current);
 
     try {
-      const res = await api.put('/ride/accept', { 
-        rideId: incomingRequest._id
+      const res = await api.put('/ride/accept', {
+        rideId: incomingRequest._id,
       });
 
       setActiveRide(res.data.ride);
       socket.emit('join_ride', res.data.ride._id);
       setIncomingRequest(null);
-      Alert.alert("Success", "Head to pickup location!");
+      Alert.alert('Success', 'Head to pickup location!');
     } catch (err: any) {
-      Alert.alert("Error", "Ride already taken or expired");
+      Alert.alert('Error', 'Ride already taken or expired');
       setIncomingRequest(null);
     }
   };
 
-  const arriveAtPickup = async () => {
-    if(!activeRide) return false;
+  const submitGeofencedArrival = async (mode: 'pickup' | 'drop'): Promise<boolean> => {
+    if (!activeRide || arrivalSubmittingRef.current) return false;
+
+    const rideId = activeRide._id || (activeRide as any).id;
+    const targetCoord = mode === 'pickup' ? activeRide.pickup : activeRide.drop;
+
+    arrivalSubmittingRef.current = true;
+    setIsArrivalSubmitting(true);
+
     try {
-        const res = await api.put('/ride/update-status', {
-            rideId: activeRide._id,
-            status: 'arrived'
-        });
-        setActiveRide(res.data.ride || { ...activeRide, status: 'arrived', arrivedAt: new Date().toISOString() });
-        return true;
-    } catch (err) {
-        Alert.alert("Error", "Could not update status");
+      let currentGps = driverGps;
+      const isTooOld =
+        !currentGps ||
+        currentGps.latitude == null ||
+        currentGps.timestamp == null ||
+        Date.now() - currentGps.timestamp > 15000;
+
+      if (isTooOld) {
+        currentGps = (await refreshCurrentGps()) || currentGps;
+      }
+
+      const evaluation = evaluateDriverGeofence(currentGps, targetCoord, mode);
+      if (!evaluation.canDeclareArrival || !currentGps || currentGps.latitude == null || currentGps.longitude == null) {
+        Alert.alert(
+          mode === 'pickup' ? 'Cannot Mark Pickup Arrival' : 'Cannot Mark Drop Arrival',
+          evaluation.statusMessage
+        );
         return false;
+      }
+
+      const endpoint = mode === 'pickup' ? `/ride/${rideId}/arrive-pickup` : `/ride/${rideId}/arrive-drop`;
+      const res = await api.post(endpoint, {
+        lat: currentGps.latitude,
+        lng: currentGps.longitude,
+        accuracy: currentGps.accuracy,
+        timestamp: currentGps.timestamp,
+        isMocked: currentGps.isMocked,
+      });
+
+      if (res.data?.ride) {
+        setActiveRide(res.data.ride);
+      }
+      return true;
+    } catch (err: any) {
+      const errMsg =
+        err?.response?.data?.message ||
+        err?.response?.data?.msg ||
+        `Could not verify ${mode} arrival`;
+      Alert.alert('Arrival Check Failed', errMsg);
+      return false;
+    } finally {
+      arrivalSubmittingRef.current = false;
+      setIsArrivalSubmitting(false);
     }
   };
+
+  const arriveAtPickup = async () => submitGeofencedArrival('pickup');
+  const arriveAtDrop = async () => submitGeofencedArrival('drop');
 
   const startRide = async (otp: string) => {
-    if(!activeRide) return false;
+    if (!activeRide) return false;
     try {
-        const res = await api.put('/ride/update-status', {
-            rideId: activeRide._id,
-            status: 'ongoing',
-            otp
-        });
-        setActiveRide(res.data.ride || { ...activeRide, status: 'ongoing' });
-        return true;
+      const res = await api.put('/ride/update-status', {
+        rideId: activeRide._id,
+        status: 'ongoing',
+        otp,
+      });
+      setActiveRide(res.data.ride || { ...activeRide, status: 'ongoing' });
+      return true;
     } catch (err: any) {
-        Alert.alert("Invalid OTP", "Ask customer for the 4-digit code");
-        return false;
+      Alert.alert('Invalid OTP', err?.response?.data?.message || 'Ask customer for the 4-digit code');
+      return false;
     }
   };
 
-  const completeRide = async () => {
-    if(!activeRide) return;
+  const completeRide = async (): Promise<boolean> => {
+    if (!activeRide) return false;
     try {
-        await api.put('/ride/update-status', {
-            rideId: activeRide._id,
-            status: 'completed'
-        });
-        setActiveRide(null);
-        Alert.alert("Completed", `Fare collected: ₹${activeRide.fare}`);
-    } catch (err) {
-        Alert.alert("Error", "Network error");
+      const fareCollected = activeRide.fare;
+      await api.put('/ride/update-status', {
+        rideId: activeRide._id,
+        status: 'completed',
+      });
+      setActiveRide(null);
+      Alert.alert('Completed', `Fare collected: ₹${fareCollected}`);
+      return true;
+    } catch (err: any) {
+      Alert.alert('Cannot Complete Trip', err?.response?.data?.message || 'Network error');
+      return false;
     }
   };
 
@@ -274,8 +497,77 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
+  const refreshSurgeStatus = async (): Promise<RiderSurgeStatus | null> => {
+    try {
+      const token = await AsyncStorage.getItem('token');
+      if (!token) return null;
+      const res: any = await api.get('/ride/surge-status', {
+        params: location
+          ? { lat: location.latitude, lng: location.longitude }
+          : undefined,
+      });
+      const payload = res?.data?.multiplier != null ? res.data : res?.multiplier != null ? res : null;
+      if (payload) {
+        setSurgeStatus(payload);
+        return payload;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
   useEffect(() => {
     refreshActiveRide();
+    refreshSurgeStatus();
+  }, []);
+
+  useEffect(() => {
+    if (!location) return;
+    refreshSurgeStatus();
+    const interval = setInterval(() => {
+      refreshSurgeStatus();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [location?.latitude, location?.longitude]);
+
+  useEffect(() => {
+    const onSurgeUpdate = (data: any) => {
+      if (!data) return;
+      setSurgeStatus((prev) => {
+        const nextMultiplier = Number(data.multiplier ?? data.surgeMultiplier ?? prev?.multiplier ?? 1.0);
+        if (!prev) {
+          return {
+            multiplier: nextMultiplier,
+            isSurgeActive: nextMultiplier > 1.04,
+            demandLevel: data.demandLevel || 'Moderate',
+            trafficLevel: data.trafficLevel || 'Smooth',
+            trafficDelayMinutes: 0,
+            trafficSpeedKmh: 24,
+            activeRequestsNearby: Number(data.activeRequestsNearby ?? 0),
+            availableDriversNearby: Number(data.availableDriversNearby ?? 0),
+            reason: data.reason || `Live demand surge (${nextMultiplier.toFixed(1)}x)`,
+            updatedAt: data.updatedAt,
+          };
+        }
+        return {
+          ...prev,
+          multiplier: nextMultiplier,
+          isSurgeActive: nextMultiplier > 1.04,
+          demandLevel: data.demandLevel || prev.demandLevel,
+          trafficLevel: data.trafficLevel || prev.trafficLevel,
+          activeRequestsNearby: data.activeRequestsNearby ?? prev.activeRequestsNearby,
+          availableDriversNearby: data.availableDriversNearby ?? prev.availableDriversNearby,
+          reason: data.reason || prev.reason,
+          updatedAt: data.updatedAt || prev.updatedAt,
+        };
+      });
+    };
+
+    socket.on('surge:update', onSurgeUpdate);
+    return () => {
+      socket.off('surge:update', onSurgeUpdate);
+    };
   }, []);
 
   const logout = async (nav: any) => {
@@ -294,9 +586,10 @@ export const RiderProvider = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <RiderContext.Provider value={{
-      isOnline, location, googleMapsKey, incomingRequest, activeRide,
+      isOnline, location, driverGps, isArrivalSubmitting, googleMapsKey, incomingRequest, activeRide,
+      surgeStatus, refreshSurgeStatus, refreshCurrentGps,
       setActiveRide, refreshActiveRide,
-      toggleOnline, acceptRide, rejectRide, arriveAtPickup, startRide, completeRide, logout
+      toggleOnline, acceptRide, rejectRide, arriveAtPickup, arriveAtDrop, startRide, completeRide, logout
     }}>
       {children}
     </RiderContext.Provider>

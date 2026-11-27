@@ -1,25 +1,64 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/stack';
 import PlaceAutocompleteInput from '../../../components/PlaceAutocompleteInput';
 import { useCustomer } from '../../../context/CustomerContext';
+import { rideHistoryService } from '../../rides/services/rideHistoryService';
 
 type Props = {
   navigation: StackNavigationProp<any, 'LocationSearch'>;
   route?: any;
 };
 
-const recentLocations = [
-  { id: '1', name: 'Charminar', address: 'Charminar Rd, Hyderabad', icon: 'time', lat: 17.3616, lng: 78.4747 },
-  { id: '2', name: 'Secunderabad Railway Station', address: 'Station Rd, Secunderabad', icon: 'train', lat: 17.4334, lng: 78.5045 },
-  { id: '3', name: 'Hitec City Cyber Towers', address: 'Hitec City, Madhapur, Hyderabad', icon: 'briefcase', lat: 17.4504, lng: 78.3808 },
-  { id: '4', name: 'RGIA Airport', address: 'Shamshabad, Hyderabad', icon: 'airplane', lat: 17.2403, lng: 78.4294 },
-];
+interface RecentLocationItem {
+  id: string;
+  name: string;
+  address: string;
+  icon: string;
+  lat: number;
+  lng: number;
+}
 
 export default function LocationSearchScreen({ navigation, route }: Props) {
   const { currentAddress, userLocation, requestCurrentLocation, fetchEstimate } = useCustomer();
   const [searchText, setSearchText] = useState('');
+  const [recentLocations, setRecentLocations] = useState<RecentLocationItem[]>([]);
+  const [loadingRecent, setLoadingRecent] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    rideHistoryService
+      .getHistory({ limit: 8 })
+      .then((res) => {
+        if (!active || !Array.isArray(res?.rides)) return;
+        const seen = new Set<string>();
+        const list: RecentLocationItem[] = [];
+        for (const r of res.rides) {
+          const address = r.drop?.address || r.dropAddress;
+          const lat = Number(r.drop?.lat ?? r.dropLat);
+          const lng = Number(r.drop?.lng ?? r.dropLng);
+          if (!address || isNaN(lat) || isNaN(lng) || seen.has(address)) continue;
+          seen.add(address);
+          list.push({
+            id: r.id || r._id,
+            name: r.drop?.name || r.dropPlaceName || address.split(',')[0],
+            address,
+            icon: 'time',
+            lat,
+            lng,
+          });
+        }
+        setRecentLocations(list);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setLoadingRecent(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const target = route?.params?.target || 'drop'; // 'pickup' | 'drop'
 
@@ -90,12 +129,20 @@ export default function LocationSearchScreen({ navigation, route }: Props) {
       </TouchableOpacity>
 
       <View style={styles.recentSection}>
-        <Text style={styles.sectionTitle}>Popular & Recent Places</Text>
-        <FlatList
-          data={recentLocations}
-          keyExtractor={(item) => item.id}
-          keyboardShouldPersistTaps="handled"
-          renderItem={({ item }) => (
+        <Text style={styles.sectionTitle}>Recent Destinations</Text>
+        {loadingRecent ? (
+          <ActivityIndicator size="small" color="#f72585" style={{ marginTop: 16 }} />
+        ) : (
+          <FlatList
+            data={recentLocations}
+            keyExtractor={(item) => item.id}
+            keyboardShouldPersistTaps="handled"
+            ListEmptyComponent={
+              <Text style={{ color: '#888', fontSize: 13, marginTop: 12 }}>
+                No recent destinations yet. Search an address above to get started.
+              </Text>
+            }
+            renderItem={({ item }) => (
             <TouchableOpacity
               style={styles.locationItem}
               onPress={() =>
@@ -118,6 +165,7 @@ export default function LocationSearchScreen({ navigation, route }: Props) {
             </TouchableOpacity>
           )}
         />
+        )}
       </View>
     </SafeAreaView>
   );

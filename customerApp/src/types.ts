@@ -24,7 +24,7 @@ export interface Estimate {
 
 export interface Ride {
   _id: string;
-  status: 'pending' | 'accepted' | 'ongoing' | 'completed' | 'cancelled';
+  status: 'pending' | 'accepted' | 'arrived' | 'ongoing' | 'drop_arrived' | 'completed' | 'cancelled';
   otp: string;
   pickup: LocationData;
   drop: LocationData;

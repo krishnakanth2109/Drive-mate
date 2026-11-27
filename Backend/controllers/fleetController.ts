@@ -234,21 +234,31 @@ export const getFleetZones = asyncHandler(async (req: AuthenticatedRequest, res:
  * Get high-level fleet metrics
  */
 export const getFleetMetrics = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const [activeFleetDrivers, inOnboardingPipeline, inspectionsCount] = await Promise.all([
+  const [activeFleetDrivers, inOnboardingPipeline, inspectionsCount, passedInspections, ratingAgg] = await Promise.all([
     prisma.rider.count({ where: { isAvailable: true } }),
     prisma.driverOnboarding.count({ where: { overallStatus: { in: ['pending_review', 'in_progress'] } } }),
     prisma.vehicleInspection.count(),
+    prisma.vehicleInspection.count({ where: { inspectionPass: true } }),
+    prisma.rider.aggregate({
+      where: { rating: { gt: 0 } },
+      _avg: { rating: true },
+    }),
   ]);
+
+  const compliancePct = inspectionsCount > 0
+    ? `${((passedInspections / inspectionsCount) * 100).toFixed(1)}%`
+    : '0.0%';
+  const avgDriverRating = ratingAgg._avg.rating ? Number(Number(ratingAgg._avg.rating).toFixed(2)) : 0;
 
   res.status(200).json(
     new ApiResponse(
       200,
       {
-        activeFleetDrivers: activeFleetDrivers || 128,
-        inOnboardingPipeline: inOnboardingPipeline || 34,
-        inspectionsCount: inspectionsCount || 410,
-        fleetComplianceRate: '98.4%',
-        avgDriverRating: 4.86,
+        activeFleetDrivers,
+        inOnboardingPipeline,
+        inspectionsCount,
+        fleetComplianceRate: compliancePct,
+        avgDriverRating,
       },
       'Fleet metrics fetched successfully'
     )

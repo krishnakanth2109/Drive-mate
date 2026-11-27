@@ -9,12 +9,14 @@ import {
   getEscalations,
   reviewEscalation,
   getSupportMetrics,
+  getSupportFaqs,
 } from '../controllers/supportController.js';
 
 const router = Router();
 
-// Support Metrics & Analytics
+// Support Metrics & FAQs
 router.get('/metrics', getSupportMetrics);
+router.get('/faqs', getSupportFaqs);
 
 // Ticket Management
 router.get('/tickets', getTickets);

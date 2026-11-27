@@ -156,22 +156,37 @@ export const createIncentiveBroadcast = asyncHandler(async (req: AuthenticatedRe
  * Get operations dispatch metrics and supply-demand ratio
  */
 export const getOperationsMetrics = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const [activeRides, activeDrivers, totalZones] = await Promise.all([
-    prisma.ride.count({ where: { status: { in: ['accepted', 'arrived', 'in_progress'] } } }),
+  const [activeRides, activeDrivers, totalZones, activeSurgeZones, completedCount, cancelledCount, durationAgg] = await Promise.all([
+    prisma.ride.count({ where: { status: { in: ['pending', 'accepted', 'arrived', 'in_progress', 'ongoing', 'drop_arrived'] } } }),
     prisma.rider.count({ where: { isAvailable: true } }),
     prisma.cityZone.count(),
+    prisma.cityZone.count({ where: { surgeMultiplier: { gt: 1.0 } } }),
+    prisma.ride.count({ where: { status: 'completed' } }),
+    prisma.ride.count({ where: { status: 'cancelled' } }),
+    prisma.ride.aggregate({
+      where: { status: { in: ['completed', 'ongoing', 'in_progress'] }, duration: { gt: 0 } },
+      _avg: { duration: true },
+    }),
   ]);
+
+  const terminalRides = completedCount + cancelledCount;
+  const fulfillmentRate = terminalRides > 0
+    ? `${((completedCount / terminalRides) * 100).toFixed(1)}%`
+    : '0.0%';
+  const avgEtaMinutes = durationAgg._avg.duration
+    ? Number(Number(durationAgg._avg.duration).toFixed(1))
+    : 0;
 
   res.status(200).json(
     new ApiResponse(
       200,
       {
-        liveRidesCount: activeRides || 86,
-        activeSupplyDrivers: activeDrivers || 128,
-        activeCityZones: totalZones || 6,
-        avgEtaMinutes: 3.8,
-        fulfillmentRate: '96.2%',
-        activeSurgeZones: 2,
+        liveRidesCount: activeRides,
+        activeSupplyDrivers: activeDrivers,
+        activeCityZones: totalZones,
+        avgEtaMinutes,
+        fulfillmentRate,
+        activeSurgeZones,
       },
       'Operations metrics fetched successfully'
     )

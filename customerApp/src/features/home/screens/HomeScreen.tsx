@@ -1,27 +1,27 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Dimensions,
   Platform,
   ScrollView,
   Alert,
   KeyboardAvoidingView,
+  Animated,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import WebMapView, { RoutePoint } from '../../../components/WebMapView';
-import PlaceAutocompleteInput from '../../../components/PlaceAutocompleteInput';
 import InRideSupportModal from '../../../components/InRideSupportModal';
-import { useCustomer } from '../../../context/CustomerContext';
+import { useCustomer, FareOption } from '../../../context/CustomerContext';
+import HomeHeader from '../components/HomeHeader';
+import DestinationInput from '../components/DestinationInput';
+import PromoBanner from '../components/PromoBanner';
+import RecentRides from '../components/RecentRides';
+import SurgeBreakdownModal from '../components/SurgeBreakdownModal';
 
-const { width, height } = Dimensions.get('window');
-
-// ─────────────────────────────────────────────
-// Decode Encoded Polyline Helper
-// ─────────────────────────────────────────────
 const decodePolyline = (t: string): RoutePoint[] => {
   if (!t || t === 'encoded_polyline_placeholder') return [];
   const points: RoutePoint[] = [];
@@ -52,14 +52,11 @@ const decodePolyline = (t: string): RoutePoint[] => {
   return points;
 };
 
-// ─────────────────────────────────────────────
-// Vehicle Types Config
-// ─────────────────────────────────────────────
 const VEHICLE_TYPES = [
-  { type: 'bike', emoji: '🏍️', label: 'Bike', desc: 'Fast & affordable' },
-  { type: 'scooty', emoji: '🛵', label: 'Scooty', desc: 'Light & easy' },
-  { type: 'auto', emoji: '🛺', label: 'Auto', desc: 'Comfortable' },
-  { type: 'car', emoji: '🚗', label: 'Car', desc: 'Premium' },
+  { type: 'bike', emoji: '🏍️', label: 'Bike', seats: '1 seat', basePrice: 20, tag: 'FASTEST' },
+  { type: 'scooty', emoji: '🛵', label: 'Scooty', seats: '1 seat', basePrice: 25, tag: 'VALUE' },
+  { type: 'auto', emoji: '🛺', label: 'Auto', seats: '3 seats', basePrice: 30, tag: 'NO-AC' },
+  { type: 'car', emoji: '🚗', label: 'Car', seats: '4 seats', basePrice: 50, tag: 'COMFORT' },
 ];
 
 // ─────────────────────────────────────────────
@@ -68,24 +65,34 @@ const VEHICLE_TYPES = [
 const MapComponent = ({
   isPinPicking,
   onPinChange,
-  pinTarget,
+  showTraffic,
 }: {
   isPinPicking: boolean;
   onPinChange: (loc: { lat: number; lng: number }) => void;
-  pinTarget: 'pickup' | 'drop';
+  showTraffic: boolean;
 }) => {
-  const { userLocation, estimate, driverLocation, appState, availableDrivers, googleMapsKey } = useCustomer();
+  const {
+    userLocation,
+    estimate,
+    driverLocation,
+    appState,
+    availableDrivers,
+    googleMapsKey,
+    surgeStatus,
+  } = useCustomer();
 
   if (!userLocation) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#f72585" />
+        <View style={styles.loaderPulse}>
+          <ActivityIndicator size="large" color="#f72585" />
+        </View>
         <Text style={styles.loaderText}>Acquiring GPS location...</Text>
+        <Text style={styles.loaderSub}>Syncing nearby captains & live road traffic</Text>
       </View>
     );
   }
 
-  // Use route coordinates from backend estimate or decode polyline
   let routeCoordinates: RoutePoint[] = [];
   if (estimate?.coordinates && estimate.coordinates.length > 0) {
     routeCoordinates = estimate.coordinates;
@@ -95,12 +102,13 @@ const MapComponent = ({
 
   const markers = estimate
     ? [
-        { coord: { latitude: estimate.pickup.lat, longitude: estimate.pickup.lng }, color: '#06d6a0', label: 'FROM' },
+        { coord: { latitude: estimate.pickup.lat, longitude: estimate.pickup.lng }, color: '#10b981', label: 'FROM' },
         { coord: { latitude: estimate.drop.lat, longitude: estimate.drop.lng }, color: '#f72585', label: 'TO' },
       ]
     : [];
 
   const visibleDrivers = appState === 'IDLE' || appState === 'ESTIMATING' ? availableDrivers : {};
+  const activeMultiplier = estimate?.surge?.multiplier ?? surgeStatus?.multiplier ?? 1.0;
 
   return (
     <View style={styles.map}>
@@ -113,337 +121,11 @@ const MapComponent = ({
         driverLocation={appState === 'ACCEPTED' || appState === 'ONGOING' ? driverLocation : null}
         nearbyDrivers={visibleDrivers}
         isPinPicking={isPinPicking}
+        showTraffic={showTraffic}
+        surgeMultiplier={activeMultiplier}
         onRegionChange={(lat, lng) => onPinChange({ lat, lng })}
         style={StyleSheet.absoluteFill}
       />
-    </View>
-  );
-};
-
-// ─────────────────────────────────────────────
-// INPUT & BOOKING PANEL
-// ─────────────────────────────────────────────
-const InputPanel = ({
-  isPinPicking,
-  setIsPinPicking,
-  pinLocation,
-  pinTarget,
-  setPinTarget,
-}: {
-  isPinPicking: boolean;
-  setIsPinPicking: (v: boolean) => void;
-  pinLocation: { lat: number; lng: number } | null;
-  pinTarget: 'pickup' | 'drop';
-  setPinTarget: (t: 'pickup' | 'drop') => void;
-}) => {
-  const {
-    appState,
-    fetchEstimate,
-    userLocation,
-    currentAddress,
-    locationPermissionGranted,
-    requestCurrentLocation,
-    isLocating,
-  } = useCustomer();
-
-  // Location State
-  const [pickupText, setPickupText] = useState<string>('');
-  const [pickupCoords, setPickupCoords] = useState<{ lat: number; lng: number; name?: string; address: string } | null>(null);
-
-  const [dropText, setDropText] = useState<string>('');
-  const [dropCoords, setDropCoords] = useState<{ lat: number; lng: number; name?: string; address: string } | null>(null);
-
-  const [isEstimatingRoute, setIsEstimatingRoute] = useState<boolean>(false);
-
-  // Initialize Pickup to Current Location when GPS is ready
-  useEffect(() => {
-    if (userLocation && currentAddress && !pickupCoords && !pickupText) {
-      setPickupText(currentAddress);
-      setPickupCoords({
-        lat: userLocation.latitude,
-        lng: userLocation.longitude,
-        name: 'My Current Location',
-        address: currentAddress,
-      });
-    }
-  }, [userLocation, currentAddress]);
-
-  // Pin Picking Confirmation Handler
-  const handleConfirmPinLocation = () => {
-    if (!pinLocation) {
-      setIsPinPicking(false);
-      return;
-    }
-
-    const addrStr = `${pinLocation.lat.toFixed(4)}, ${pinLocation.lng.toFixed(4)}`;
-    if (pinTarget === 'pickup') {
-      setPickupText(addrStr);
-      setPickupCoords({
-        lat: pinLocation.lat,
-        lng: pinLocation.lng,
-        name: 'Selected Pin Location',
-        address: addrStr,
-      });
-    } else {
-      setDropText(addrStr);
-      setDropCoords({
-        lat: pinLocation.lat,
-        lng: pinLocation.lng,
-        name: 'Selected Pin Destination',
-        address: addrStr,
-      });
-    }
-    setIsPinPicking(false);
-  };
-
-  // Swap Pickup & Destination
-  const handleSwapLocations = () => {
-    const tempText = pickupText;
-    const tempCoords = pickupCoords;
-
-    setPickupText(dropText);
-    setPickupCoords(dropCoords);
-
-    setDropText(tempText);
-    setDropCoords(tempCoords);
-
-    if (tempCoords && dropCoords) {
-      // Both exist; re-calculate road route immediately
-      fetchEstimate(dropCoords, tempCoords);
-    }
-  };
-
-  // Trigger Road Route Estimate
-  const handleEstimateRoute = async () => {
-    if (!pickupCoords && !pickupText.trim()) {
-      Alert.alert('Missing Pickup', 'Please enter or select a pickup location.');
-      return;
-    }
-    if (!dropCoords && !dropText.trim()) {
-      Alert.alert('Missing Destination', 'Please enter or select a drop destination.');
-      return;
-    }
-
-    const finalPickup = pickupCoords || pickupText.trim();
-    const finalDrop = dropCoords || dropText.trim();
-
-    setIsEstimatingRoute(true);
-    try {
-      await fetchEstimate(finalPickup, finalDrop);
-    } finally {
-      setIsEstimatingRoute(false);
-    }
-  };
-
-  if (appState !== 'IDLE') return null;
-
-  // Pin Picking Overlay Mode
-  if (isPinPicking) {
-    return (
-      <View style={styles.panel}>
-        <View style={styles.handle} />
-        <Text style={styles.panelTitle}>
-          Pick {pinTarget === 'pickup' ? 'Pickup Location' : 'Destination'}
-        </Text>
-        <Text style={styles.panelSub}>Drag the map to position the center pin at your desired location</Text>
-
-        <View style={styles.actionRow}>
-          <TouchableOpacity style={styles.cancelOutlineBtn} onPress={() => setIsPinPicking(false)}>
-            <Text style={styles.cancelOutlineText}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirmPinLocation}>
-            <Text style={styles.confirmBtnText}>Confirm Location</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.panel}>
-      <View style={styles.handle} />
-
-      {/* Permission Denied Notice */}
-      {locationPermissionGranted === false && (
-        <View style={styles.warningBanner}>
-          <Ionicons name="information-circle" size={18} color="#e65100" />
-          <Text style={styles.warningText}>
-            Location access is disabled. Please search or enter your pickup manually.
-          </Text>
-        </View>
-      )}
-
-      <View style={styles.panelHeaderRow}>
-        <View>
-          <Text style={styles.panelTitle}>Book a Ride</Text>
-          <Text style={styles.panelSub}>Real road route • Max distance: 40 km</Text>
-        </View>
-      </View>
-
-      {/* Inputs Container with Swap Button */}
-      <View style={styles.inputsContainer}>
-        {/* Pickup Input */}
-        <View style={styles.inputItemRow}>
-          <PlaceAutocompleteInput
-            placeholder="Enter pickup location"
-            value={pickupText}
-            dotColor="#06d6a0"
-            onChangeText={(t) => {
-              setPickupText(t);
-              setPickupCoords(null); // Clear stale coordinates on manual text edit
-            }}
-            onSelect={(place) => {
-              setPickupText(place.address || place.name || '');
-              setPickupCoords(place);
-            }}
-            onClear={() => {
-              setPickupText('');
-              setPickupCoords(null);
-            }}
-            rightAction={
-              <TouchableOpacity
-                style={styles.gpsSmallBtn}
-                onPress={async () => {
-                  await requestCurrentLocation();
-                  if (userLocation && currentAddress) {
-                    setPickupText(currentAddress);
-                    setPickupCoords({
-                      lat: userLocation.latitude,
-                      lng: userLocation.longitude,
-                      name: 'Current Location',
-                      address: currentAddress,
-                    });
-                  }
-                }}
-              >
-                {isLocating ? (
-                  <ActivityIndicator size="small" color="#06d6a0" />
-                ) : (
-                  <Ionicons name="locate" size={18} color="#06d6a0" />
-                )}
-              </TouchableOpacity>
-            }
-          />
-        </View>
-
-        {/* Swap Button Divider */}
-        <View style={styles.swapRow}>
-          <View style={styles.connectorLine} />
-          <TouchableOpacity
-            style={styles.swapBtn}
-            onPress={handleSwapLocations}
-            activeOpacity={0.7}
-            accessibilityLabel="Swap pickup and destination"
-          >
-            <Ionicons name="swap-vertical" size={18} color="#1a1a2e" />
-          </TouchableOpacity>
-          <View style={styles.connectorLine} />
-        </View>
-
-        {/* Destination Drop Input */}
-        <View style={styles.inputItemRow}>
-          <PlaceAutocompleteInput
-            placeholder="Where to? (e.g. Airport, Charminar)"
-            value={dropText}
-            dotColor="#f72585"
-            onChangeText={(t) => {
-              setDropText(t);
-              setDropCoords(null); // Clear stale coordinates on manual text edit
-            }}
-            onSelect={(place) => {
-              setDropText(place.address || place.name || '');
-              setDropCoords(place);
-            }}
-            onClear={() => {
-              setDropText('');
-              setDropCoords(null);
-            }}
-            rightAction={
-              <TouchableOpacity
-                style={styles.mapPinSmallBtn}
-                onPress={() => {
-                  setPinTarget('drop');
-                  setIsPinPicking(true);
-                }}
-                accessibilityLabel="Choose destination by dragging map pin"
-              >
-                <Ionicons name="map" size={18} color="#f72585" />
-              </TouchableOpacity>
-            }
-          />
-        </View>
-      </View>
-
-      {/* Quick Destination Chips */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickChipsScroll}>
-        <TouchableOpacity
-          style={styles.quickChip}
-          onPress={() => {
-            const loc = { lat: 17.4375, lng: 78.4482, name: 'Indiranagar Metro Station', address: 'Indiranagar Metro Station, 100ft Road' };
-            setDropText(loc.address);
-            setDropCoords(loc);
-          }}
-          activeOpacity={0.75}
-        >
-          <Text style={styles.quickChipEmoji}>🚇</Text>
-          <Text style={styles.quickChipText}>Metro Station</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.quickChip}
-          onPress={() => {
-            const loc = { lat: 17.4435, lng: 78.3772, name: 'Cyber Towers Hitec City', address: 'Cyber Towers, Hitec City' };
-            setDropText(loc.address);
-            setDropCoords(loc);
-          }}
-          activeOpacity={0.75}
-        >
-          <Text style={styles.quickChipEmoji}>💼</Text>
-          <Text style={styles.quickChipText}>Work</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.quickChip}
-          onPress={() => {
-            const loc = { lat: 17.2403, lng: 78.4294, name: 'Rajiv Gandhi Intl Airport', address: 'Rajiv Gandhi International Airport (RGIA)' };
-            setDropText(loc.address);
-            setDropCoords(loc);
-          }}
-          activeOpacity={0.75}
-        >
-          <Text style={styles.quickChipEmoji}>✈️</Text>
-          <Text style={styles.quickChipText}>Airport</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.quickChip}
-          onPress={() => {
-            const loc = { lat: 17.3984, lng: 78.4908, name: 'HSR Layout BDA', address: 'HSR Layout BDA Complex' };
-            setDropText(loc.address);
-            setDropCoords(loc);
-          }}
-          activeOpacity={0.75}
-        >
-          <Text style={styles.quickChipEmoji}>🏠</Text>
-          <Text style={styles.quickChipText}>Home</Text>
-        </TouchableOpacity>
-      </ScrollView>
-
-      {/* Find Rides CTA Button */}
-      <TouchableOpacity
-        style={[styles.findBtn, isEstimatingRoute && { opacity: 0.8 }]}
-        onPress={handleEstimateRoute}
-        disabled={isEstimatingRoute}
-      >
-        {isEstimatingRoute ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <ActivityIndicator color="#fff" size="small" />
-            <Text style={styles.findBtnText}>Generating Road Route...</Text>
-          </View>
-        ) : (
-          <Text style={styles.findBtnText}>Find Available Rides →</Text>
-        )}
-      </TouchableOpacity>
     </View>
   );
 };
@@ -460,7 +142,7 @@ const WaitTimerBadge = ({ arrivedAt }: { arrivedAt?: string | null }) => {
     const calculateTime = () => {
       const arrivedTime = arrivedAt ? new Date(arrivedAt).getTime() : Date.now();
       const elapsedSeconds = Math.max(0, Math.floor((Date.now() - arrivedTime) / 1000));
-      const freeSeconds = 180; // 3 minutes
+      const freeSeconds = 180;
       if (elapsedSeconds < freeSeconds) {
         setSecondsRemaining(freeSeconds - elapsedSeconds);
         setIsExpired(false);
@@ -499,12 +181,376 @@ const WaitTimerBadge = ({ arrivedAt }: { arrivedAt?: string | null }) => {
 };
 
 // ─────────────────────────────────────────────
+// SEARCHING RADAR ANIMATION
+// ─────────────────────────────────────────────
+const SearchingRadar = () => {
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.timing(pulse, {
+        toValue: 1,
+        duration: 1600,
+        useNativeDriver: Platform.OS !== 'web',
+      })
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [pulse]);
+
+  const ringScale = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.85, 1.9],
+  });
+  const ringOpacity = pulse.interpolate({
+    inputRange: [0, 0.7, 1],
+    outputRange: [0.5, 0.18, 0],
+  });
+
+  return (
+    <View style={styles.radarContainer}>
+      <Animated.View
+        style={[
+          styles.radarRing,
+          { transform: [{ scale: ringScale }], opacity: ringOpacity },
+        ]}
+      />
+      <View style={styles.radarCenter}>
+        <Ionicons name="navigate" size={26} color="#f72585" />
+      </View>
+    </View>
+  );
+};
+
+// ─────────────────────────────────────────────
+// BOOKING INPUT PANEL (IDLE STATE)
+// ─────────────────────────────────────────────
+const InputPanel = ({
+  isPinPicking,
+  setIsPinPicking,
+  pinLocation,
+  pinTarget,
+  setPinTarget,
+  selectedVehicle,
+  setSelectedVehicle,
+  onOpenSurgeModal,
+}: {
+  isPinPicking: boolean;
+  setIsPinPicking: (v: boolean) => void;
+  pinLocation: { lat: number; lng: number } | null;
+  pinTarget: 'pickup' | 'drop';
+  setPinTarget: (t: 'pickup' | 'drop') => void;
+  selectedVehicle: string;
+  setSelectedVehicle: (t: string) => void;
+  onOpenSurgeModal: () => void;
+}) => {
+  const {
+    appState,
+    fetchEstimate,
+    userLocation,
+    currentAddress,
+    locationPermissionGranted,
+    requestCurrentLocation,
+    isLocating,
+    surgeStatus,
+    refreshSurgeStatus,
+  } = useCustomer();
+
+  const [pickupText, setPickupText] = useState<string>('');
+  const [pickupCoords, setPickupCoords] = useState<{ lat: number; lng: number; name?: string; address: string } | null>(null);
+  const [dropText, setDropText] = useState<string>('');
+  const [dropCoords, setDropCoords] = useState<{ lat: number; lng: number; name?: string; address: string } | null>(null);
+  const [isEstimatingRoute, setIsEstimatingRoute] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (userLocation && currentAddress && !pickupCoords && !pickupText) {
+      setPickupText(currentAddress);
+      setPickupCoords({
+        lat: userLocation.latitude,
+        lng: userLocation.longitude,
+        name: 'My Current Location',
+        address: currentAddress,
+      });
+    }
+  }, [userLocation, currentAddress]);
+
+  const handleConfirmPinLocation = () => {
+    if (!pinLocation) {
+      setIsPinPicking(false);
+      return;
+    }
+
+    const addrStr = `${pinLocation.lat.toFixed(4)}, ${pinLocation.lng.toFixed(4)}`;
+    if (pinTarget === 'pickup') {
+      setPickupText(addrStr);
+      setPickupCoords({
+        lat: pinLocation.lat,
+        lng: pinLocation.lng,
+        name: 'Selected Pin Location',
+        address: addrStr,
+      });
+      refreshSurgeStatus(pinLocation.lat, pinLocation.lng, addrStr);
+    } else {
+      setDropText(addrStr);
+      setDropCoords({
+        lat: pinLocation.lat,
+        lng: pinLocation.lng,
+        name: 'Selected Pin Destination',
+        address: addrStr,
+      });
+    }
+    setIsPinPicking(false);
+  };
+
+  const handleSwapLocations = () => {
+    const tempText = pickupText;
+    const tempCoords = pickupCoords;
+    setPickupText(dropText);
+    setPickupCoords(dropCoords);
+    setDropText(tempText);
+    setDropCoords(tempCoords);
+
+    if (tempCoords && dropCoords) {
+      fetchEstimate(dropCoords, tempCoords);
+    }
+  };
+
+  const handleEstimateRoute = async () => {
+    if (!pickupCoords && !pickupText.trim()) {
+      Alert.alert('Missing Pickup', 'Please enter or select a pickup location.');
+      return;
+    }
+    if (!dropCoords && !dropText.trim()) {
+      Alert.alert('Missing Destination', 'Please enter or select a drop destination.');
+      return;
+    }
+
+    const finalPickup = pickupCoords || pickupText.trim();
+    const finalDrop = dropCoords || dropText.trim();
+
+    setIsEstimatingRoute(true);
+    try {
+      await fetchEstimate(finalPickup, finalDrop);
+    } finally {
+      setIsEstimatingRoute(false);
+    }
+  };
+
+  if (appState !== 'IDLE') return null;
+
+  if (isPinPicking) {
+    return (
+      <View style={styles.panel}>
+        <View style={styles.handle} />
+        <Text style={styles.panelTitle}>
+          Pin {pinTarget === 'pickup' ? 'Pickup Point' : 'Drop Destination'}
+        </Text>
+        <Text style={styles.panelSub}>
+          Pan the map under the center pin, then confirm your exact spot
+        </Text>
+
+        <View style={styles.actionRow}>
+          <TouchableOpacity style={styles.cancelOutlineBtn} onPress={() => setIsPinPicking(false)}>
+            <Text style={styles.cancelOutlineText}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirmPinLocation}>
+            <Text style={styles.confirmBtnText}>Confirm Pin</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  const activeMultiplier = surgeStatus?.multiplier ?? 1.0;
+  const isSurgeActive = Boolean(surgeStatus?.isSurgeActive && activeMultiplier > 1.04);
+
+  return (
+    <View style={styles.panel}>
+      <View style={styles.handle} />
+
+      {locationPermissionGranted === false && (
+        <View style={styles.warningBanner}>
+          <Ionicons name="information-circle" size={16} color="#b45309" />
+          <Text style={styles.warningText}>
+            GPS permission is off — enter pickup manually or enable location.
+          </Text>
+        </View>
+      )}
+
+      {/* Title Row */}
+      <View style={styles.panelHeaderRow}>
+        <View>
+          <Text style={styles.panelTitle}>Where to today?</Text>
+          <Text style={styles.panelSub}>
+            Real-time road routing • Up to 40 km
+          </Text>
+        </View>
+        {isSurgeActive && (
+          <TouchableOpacity style={styles.headerSurgeBadge} onPress={onOpenSurgeModal} activeOpacity={0.8}>
+            <Ionicons name="flame" size={13} color="#ffffff" />
+            <Text style={styles.headerSurgeBadgeText}>{activeMultiplier.toFixed(1)}x Surge</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Pickup & Drop Autocomplete Inputs */}
+      <DestinationInput
+        pickupText={pickupText}
+        dropText={dropText}
+        isLocating={isLocating}
+        userLocationBias={
+          userLocation ? { lat: userLocation.latitude, lng: userLocation.longitude } : undefined
+        }
+        onChangePickupText={(t) => {
+          setPickupText(t);
+          setPickupCoords(null);
+        }}
+        onSelectPickup={(place) => {
+          setPickupText(place.address || place.name || '');
+          setPickupCoords(place);
+          refreshSurgeStatus(place.lat, place.lng, place.address);
+        }}
+        onClearPickup={() => {
+          setPickupText('');
+          setPickupCoords(null);
+        }}
+        onUseCurrentLocation={async () => {
+          await requestCurrentLocation();
+          if (userLocation && currentAddress) {
+            setPickupText(currentAddress);
+            setPickupCoords({
+              lat: userLocation.latitude,
+              lng: userLocation.longitude,
+              name: 'Current Location',
+              address: currentAddress,
+            });
+            refreshSurgeStatus(userLocation.latitude, userLocation.longitude, currentAddress);
+          }
+        }}
+        onPickPickupOnMap={() => {
+          setPinTarget('pickup');
+          setIsPinPicking(true);
+        }}
+        onChangeDropText={(t) => {
+          setDropText(t);
+          setDropCoords(null);
+        }}
+        onSelectDrop={(place) => {
+          setDropText(place.address || place.name || '');
+          setDropCoords(place);
+        }}
+        onClearDrop={() => {
+          setDropText('');
+          setDropCoords(null);
+        }}
+        onPickDropOnMap={() => {
+          setPinTarget('drop');
+          setIsPinPicking(true);
+        }}
+        onSwapLocations={handleSwapLocations}
+      />
+
+      {/* Quick Destinations Strip */}
+      <RecentRides
+        onSelectPlace={(loc) => {
+          setDropText(loc.address);
+          setDropCoords(loc);
+        }}
+      />
+
+      {/* Interactive Starting Price Vehicle Tier Preview */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.quickTierScroll}
+        contentContainerStyle={{ gap: 8, paddingRight: 6 }}
+      >
+        {VEHICLE_TYPES.map((vt) => {
+          const backendStarting = surgeStatus?.vehicleStartingFares?.find((f) => f.type === vt.type);
+          const startingFare = backendStarting?.fare ?? Math.round(vt.basePrice * activeMultiplier);
+          const eta = backendStarting?.eta ?? (vt.type === 'bike' || vt.type === 'scooty' ? 2 : 4);
+          const isSelected = selectedVehicle === vt.type;
+
+          return (
+            <TouchableOpacity
+              key={vt.type}
+              style={[styles.miniVehiclePill, isSelected && styles.miniVehiclePillActive]}
+              onPress={() => setSelectedVehicle(vt.type)}
+              activeOpacity={0.8}
+            >
+              <Text style={{ fontSize: 16 }}>{vt.emoji}</Text>
+              <View>
+                <Text style={[styles.miniVehicleTitle, isSelected && { color: '#ffffff' }]}>
+                  {vt.label}
+                </Text>
+                <Text style={[styles.miniVehicleSub, isSelected && { color: 'rgba(255,255,255,0.8)' }]}>
+                  ₹{startingFare}+ • {eta}m
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {/* Surge / Zero Surge Live Banner */}
+      <PromoBanner surgeStatus={surgeStatus} onPress={onOpenSurgeModal} />
+
+      {/* Find Rides CTA Button */}
+      <TouchableOpacity
+        style={[
+          styles.findBtn,
+          isSurgeActive && styles.findBtnSurge,
+          isEstimatingRoute && { opacity: 0.8 },
+        ]}
+        onPress={handleEstimateRoute}
+        disabled={isEstimatingRoute}
+        activeOpacity={0.85}
+      >
+        {isEstimatingRoute ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <ActivityIndicator color="#fff" size="small" />
+            <Text style={styles.findBtnText}>Calculating Traffic & Fares...</Text>
+          </View>
+        ) : (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={styles.findBtnText}>
+              {isSurgeActive
+                ? `Check Fares (${activeMultiplier.toFixed(1)}x Surge)`
+                : 'Find Available Rides'}
+            </Text>
+            <Ionicons name="arrow-forward" size={18} color="#ffffff" />
+          </View>
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+// ─────────────────────────────────────────────
 // STATUS PANEL (ESTIMATING → SEARCHING → ACTIVE → COMPLETED)
 // ─────────────────────────────────────────────
-const StatusPanel = () => {
-  const { appState, estimate, requestRide, cancelRide, driver, activeRide, resetFlow } = useCustomer();
+const StatusPanel = ({
+  navigation,
+  selectedVehicle,
+  setSelectedVehicle,
+  onOpenSurgeModal,
+}: {
+  navigation: any;
+  selectedVehicle: string;
+  setSelectedVehicle: (t: string) => void;
+  onOpenSurgeModal: () => void;
+}) => {
+  const {
+    appState,
+    estimate,
+    requestRide,
+    cancelRide,
+    driver,
+    activeRide,
+    resetFlow,
+    currentUser,
+  } = useCustomer();
 
-  const [selectedVehicle, setSelectedVehicle] = useState<string>('bike');
   const [isConfirming, setIsConfirming] = useState<boolean>(false);
   const [isSupportModalVisible, setIsSupportModalVisible] = useState<boolean>(false);
 
@@ -512,7 +558,13 @@ const StatusPanel = () => {
 
   // ── ESTIMATING ──────────────────────────────
   if (appState === 'ESTIMATING' && estimate) {
-    const selectedFare = estimate.fareOptions?.find((o: any) => o.type === selectedVehicle) || estimate.fareOptions?.[0];
+    const selectedFare: FareOption | undefined =
+      estimate.fareOptions?.find((o) => o.type === selectedVehicle) || estimate.fareOptions?.[0];
+    const surge = estimate.surge;
+    const surgeMultiplier = surge?.multiplier ?? selectedFare?.surgeMultiplier ?? 1.0;
+    const isSurgeActive = Boolean(surge?.isSurgeActive && surgeMultiplier > 1.04);
+    const trafficDelay = estimate.trafficDelayMinutes ?? surge?.trafficDelayMinutes ?? 0;
+    const walletBalance = Math.max(0, Number(currentUser?.walletBalance) || 0);
 
     const handleConfirmBooking = async () => {
       setIsConfirming(true);
@@ -527,10 +579,10 @@ const StatusPanel = () => {
       <View style={styles.panel}>
         <View style={styles.handle} />
 
-        {/* Route summary */}
+        {/* Compact Route Summary Card */}
         <View style={styles.routeSummary}>
           <View style={styles.routePoint}>
-            <View style={[styles.routeDot, { backgroundColor: '#06d6a0' }]} />
+            <View style={[styles.routeDot, { backgroundColor: '#10b981' }]} />
             <Text style={styles.routeAddr} numberOfLines={1}>
               {estimate.pickup.address?.split(',')[0] || 'Pickup Location'}
             </Text>
@@ -544,47 +596,83 @@ const StatusPanel = () => {
           </View>
         </View>
 
-        {/* Stats Bar */}
+        {/* Stats Strip with Road Traffic Info */}
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{estimate.distance} km</Text>
-            <Text style={styles.statLabel}>Road Distance</Text>
+            <Text style={styles.statLabel}>Distance</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{estimate.duration} min</Text>
-            <Text style={styles.statLabel}>Travel Time</Text>
+            <Text style={styles.statLabel}>
+              {trafficDelay > 0 ? `+${trafficDelay}m traffic` : `${estimate.trafficLevel || 'Smooth'} road`}
+            </Text>
           </View>
-          {selectedFare && (
-            <>
-              <View style={styles.statDivider} />
-              <View style={styles.statItem}>
-                <Text style={[styles.statValue, { color: '#f72585' }]}>₹{selectedFare.fare}</Text>
-                <Text style={styles.statLabel}>Estimated Fare</Text>
-              </View>
-            </>
-          )}
+          <View style={styles.statDivider} />
+          <TouchableOpacity style={styles.statItem} onPress={onOpenSurgeModal} activeOpacity={0.75}>
+            <Text style={[styles.statValue, isSurgeActive ? { color: '#f72585' } : { color: '#059669' }]}>
+              {surgeMultiplier.toFixed(1)}x
+            </Text>
+            <Text style={styles.statLabel}>{isSurgeActive ? 'Traffic Surge ⓘ' : 'Standard ⓘ'}</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Vehicle Selection Carousel */}
-        <Text style={styles.sectionLabel}>Select Vehicle Option</Text>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionLabel}>CHOOSE YOUR RIDE</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Wallet')} activeOpacity={0.7}>
+            <Text style={styles.walletHintText}>
+              Wallet: ₹{walletBalance.toFixed(0)}
+              {selectedFare && walletBalance < selectedFare.fare ? ' (Top Up)' : ''}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.vehicleScroll}>
-          {(estimate.fareOptions || []).map((option: any) => {
+          {(estimate.fareOptions || []).map((option) => {
             const vcfg = VEHICLE_TYPES.find((v) => v.type === option.type);
             const isSelected = selectedVehicle === option.type;
+            const hasSurgeDiff = isSurgeActive && option.baseFare && option.baseFare < option.fare;
+
             return (
               <TouchableOpacity
                 key={option.type}
                 style={[styles.vehicleCard, isSelected && styles.vehicleCardSelected]}
                 onPress={() => setSelectedVehicle(option.type)}
-                activeOpacity={0.8}
+                activeOpacity={0.82}
               >
-                <Text style={styles.vehicleEmoji}>{vcfg?.emoji || '🚗'}</Text>
+                <View style={[styles.vehicleTagBadge, isSelected && { backgroundColor: 'rgba(255,255,255,0.22)' }]}>
+                  <Text style={[styles.vehicleTagText, isSelected && { color: '#ffffff' }]}>
+                    {vcfg?.tag || 'RIDE'}
+                  </Text>
+                </View>
+
+                <Text style={styles.vehicleEmoji}>{option.emoji || vcfg?.emoji || '🚗'}</Text>
                 <Text style={[styles.vehicleLabel, isSelected && styles.vehicleLabelSelected]}>
                   {option.label}
                 </Text>
-                <Text style={[styles.vehicleFare, isSelected && { color: '#fff' }]}>₹{option.fare}</Text>
-                <Text style={[styles.vehicleEta, isSelected && { color: 'rgba(255,255,255,0.8)' }]}>
+                <Text style={[styles.vehicleSeats, isSelected && { color: 'rgba(255,255,255,0.75)' }]}>
+                  {option.seats || vcfg?.seats || '1 seat'}
+                </Text>
+
+                <View style={styles.farePairRow}>
+                  <Text style={[styles.vehicleFare, isSelected && { color: '#ffffff' }]}>
+                    ₹{option.fare}
+                  </Text>
+                  {hasSurgeDiff && (
+                    <Text
+                      style={[
+                        styles.baseFareStrike,
+                        isSelected && { color: 'rgba(255,255,255,0.65)' },
+                      ]}
+                    >
+                      ₹{option.baseFare}
+                    </Text>
+                  )}
+                </View>
+
+                <Text style={[styles.vehicleEta, isSelected && { color: 'rgba(255,255,255,0.85)' }]}>
                   {option.eta} min ETA
                 </Text>
               </TouchableOpacity>
@@ -595,17 +683,20 @@ const StatusPanel = () => {
         {/* Action Buttons */}
         <View style={styles.actionRow}>
           <TouchableOpacity style={styles.cancelOutlineBtn} onPress={resetFlow} disabled={isConfirming}>
-            <Text style={styles.cancelOutlineText}>✕ Back</Text>
+            <Text style={styles.cancelOutlineText}>Back</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.confirmBtn, isConfirming && { opacity: 0.8 }]}
             onPress={handleConfirmBooking}
             disabled={isConfirming}
+            activeOpacity={0.85}
           >
             {isConfirming ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.confirmBtnText}>Confirm Booking • ₹{selectedFare?.fare || 0}</Text>
+              <Text style={styles.confirmBtnText}>
+                Confirm {selectedFare?.label || 'Ride'} • ₹{selectedFare?.fare || 0}
+              </Text>
             )}
           </TouchableOpacity>
         </View>
@@ -618,22 +709,35 @@ const StatusPanel = () => {
     return (
       <View style={[styles.panel, styles.centerPanel]}>
         <ActivityIndicator size="large" color="#f72585" />
-        <Text style={styles.statusText}>Generating road directions & route...</Text>
+        <Text style={styles.statusText}>Calculating best road route & surge...</Text>
+        <Text style={styles.statusSub}>Checking real-time traffic & captain availability</Text>
       </View>
     );
   }
 
   // ── SEARCHING ───────────────────────────────
   if (appState === 'SEARCHING') {
+    const chosen = estimate?.fareOptions?.find((o) => o.type === selectedVehicle) || estimate?.fareOptions?.[0];
+
     return (
       <View style={[styles.panel, styles.centerPanel]}>
-        <View style={styles.pulseWrap}>
-          <ActivityIndicator size="large" color="#f72585" />
-        </View>
-        <Text style={styles.statusText}>Matching nearby drivers...</Text>
-        <Text style={styles.statusSub}>Notifying drivers within 5 km of your pickup</Text>
-        <TouchableOpacity style={styles.cancelTextBtn} onPress={cancelRide}>
-          <Text style={styles.cancelTextBtnText}>Cancel Booking Request</Text>
+        <SearchingRadar />
+        <Text style={styles.statusText}>Connecting to nearby captains...</Text>
+        <Text style={styles.statusSub}>
+          Searching within 5 km • Fare locked at ₹{chosen?.fare || 0}
+        </Text>
+
+        {estimate?.surge?.isSurgeActive && (
+          <View style={styles.lockedSurgeChip}>
+            <Ionicons name="shield-checkmark" size={14} color="#f72585" />
+            <Text style={styles.lockedSurgeText}>
+              Surge locked at {estimate.surge.multiplier.toFixed(1)}x for your booking
+            </Text>
+          </View>
+        )}
+
+        <TouchableOpacity style={styles.cancelTextBtn} onPress={cancelRide} activeOpacity={0.8}>
+          <Text style={styles.cancelTextBtnText}>Cancel Ride Request</Text>
         </TouchableOpacity>
       </View>
     );
@@ -657,10 +761,10 @@ const StatusPanel = () => {
               Alert.alert('Ride Reference', `Ride ID: #${cleanDisplayId}\nFull Reference: ${rawId}`);
             }}
           >
-            <Ionicons name="receipt-outline" size={13} color="#8b5cf6" />
+            <Ionicons name="receipt-outline" size={13} color="#7c3aed" />
             <Text style={styles.rideIdTagLabel}>RIDE ID:</Text>
             <Text style={styles.rideIdTagText}>#{cleanDisplayId}</Text>
-            <Ionicons name="copy-outline" size={12} color="#8b5cf6" style={{ marginLeft: 3 }} />
+            <Ionicons name="copy-outline" size={12} color="#7c3aed" style={{ marginLeft: 3 }} />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -673,33 +777,40 @@ const StatusPanel = () => {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.statusBadge}>
-          <View
-            style={[
-              styles.statusDot,
-              {
-                backgroundColor:
-                  activeRide.status === 'arrived'
-                    ? '#06d6a0'
-                    : appState === 'ACCEPTED'
-                    ? '#ffd166'
-                    : '#06d6a0',
-              },
-            ]}
-          />
-          <Text style={styles.statusBadgeText}>
-            {activeRide.status === 'arrived'
-              ? 'Driver has arrived at pickup'
-              : appState === 'ACCEPTED'
-              ? 'Driver is heading to pickup'
-              : 'Ride In Progress'}
-          </Text>
+        <View style={styles.statusBadgeRow}>
+          <View style={styles.statusBadge}>
+            <View
+              style={[
+                styles.statusDot,
+                {
+                  backgroundColor:
+                    activeRide.status === 'drop_arrived' || activeRide.status === 'arrived'
+                      ? '#10b981'
+                      : appState === 'ACCEPTED'
+                      ? '#f59e0b'
+                      : '#2563eb',
+                },
+              ]}
+            />
+            <Text style={styles.statusBadgeText}>
+              {activeRide.status === 'drop_arrived'
+                ? 'Driver has reached destination'
+                : activeRide.status === 'arrived'
+                ? 'Driver has arrived'
+                : appState === 'ACCEPTED'
+                ? 'Driver approaching pickup'
+                : 'Ride in progress'}
+            </Text>
+          </View>
+
+          {Number(activeRide.surgeMultiplier || 1) > 1.04 && (
+            <View style={styles.miniSurgePill}>
+              <Text style={styles.miniSurgeText}>{Number(activeRide.surgeMultiplier).toFixed(1)}x Surge</Text>
+            </View>
+          )}
         </View>
 
-        {/* 3-Minute Free Wait Timer Badge when Driver has Arrived */}
-        {activeRide.status === 'arrived' && (
-          <WaitTimerBadge arrivedAt={activeRide.arrivedAt} />
-        )}
+        {activeRide.status === 'arrived' && <WaitTimerBadge arrivedAt={activeRide.arrivedAt} />}
 
         {/* Driver Card */}
         <View style={styles.driverCard}>
@@ -709,7 +820,22 @@ const StatusPanel = () => {
           <View style={{ flex: 1 }}>
             <Text style={styles.driverName}>{driver.name}</Text>
             <Text style={styles.driverVehicle}>{driver.vehicle}</Text>
-            <Text style={styles.driverPhone}>📞 {driver.phone}</Text>
+            <View style={styles.driverActionLinks}>
+              <TouchableOpacity
+                style={styles.quickContactChip}
+                onPress={() => driver.phone && Linking.openURL(`tel:${driver.phone}`)}
+              >
+                <Ionicons name="call" size={12} color="#059669" />
+                <Text style={styles.quickContactText}>Call</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.quickContactChip, { backgroundColor: '#eef2ff' }]}
+                onPress={() => navigation.navigate('Chat')}
+              >
+                <Ionicons name="chatbubble-ellipses" size={12} color="#4361ee" />
+                <Text style={[styles.quickContactText, { color: '#4361ee' }]}>Chat</Text>
+              </TouchableOpacity>
+            </View>
           </View>
           <View style={styles.otpBox}>
             <Text style={styles.otpLabel}>START OTP</Text>
@@ -720,18 +846,16 @@ const StatusPanel = () => {
         {/* Trip Info */}
         <View style={styles.tripRow}>
           <View style={styles.tripItem}>
-            <Text style={styles.tripIcon}>📍</Text>
+            <Ionicons name="location" size={15} color="#f72585" />
             <Text style={styles.tripText} numberOfLines={1}>
               {activeRide.drop?.address?.split(',')[0] || 'Destination'}
             </Text>
           </View>
-          <View style={styles.tripItem}>
-            <Text style={styles.tripIcon}>💰</Text>
-            <Text style={styles.tripText}>₹{activeRide.fare}</Text>
+          <View style={styles.tripFareChip}>
+            <Text style={styles.tripFareValue}>₹{activeRide.fare}</Text>
           </View>
         </View>
 
-        {/* Dedicated In-Ride Support Modal */}
         <InRideSupportModal
           visible={isSupportModalVisible}
           onClose={() => setIsSupportModalVisible(false)}
@@ -749,10 +873,14 @@ const StatusPanel = () => {
   if (appState === 'COMPLETED') {
     return (
       <View style={[styles.panel, styles.centerPanel]}>
-        <Text style={{ fontSize: 48 }}>🎉</Text>
-        <Text style={styles.statusText}>Trip Completed Successfully!</Text>
-        <Text style={styles.statusSub}>Thank you for riding with DriveMate</Text>
-        <TouchableOpacity style={styles.confirmBtn} onPress={resetFlow}>
+        <View style={styles.completeIconCircle}>
+          <Ionicons name="checkmark-done" size={32} color="#10b981" />
+        </View>
+        <Text style={styles.statusText}>Trip Completed!</Text>
+        <Text style={styles.statusSub}>
+          Thank you for riding with DriveMate{activeRide?.fare ? ` • Fare: ₹${activeRide.fare}` : ''}
+        </Text>
+        <TouchableOpacity style={[styles.confirmBtn, { width: '100%', marginTop: 18 }]} onPress={resetFlow}>
           <Text style={styles.confirmBtnText}>Book Another Ride</Text>
         </TouchableOpacity>
       </View>
@@ -763,97 +891,102 @@ const StatusPanel = () => {
 };
 
 // ─────────────────────────────────────────────
-// MAIN DASHBOARD COMPONENT
+// MAIN HOME SCREEN
 // ─────────────────────────────────────────────
-export default function CustomerDashboard({ navigation }: any) {
-  const { logout, requestCurrentLocation, currentUser } = useCustomer();
+export default function HomeScreen({ navigation }: any) {
+  const {
+    requestCurrentLocation,
+    currentUser,
+    currentAddress,
+    surgeStatus,
+    refreshSurgeStatus,
+    availableDrivers,
+    appState,
+  } = useCustomer();
+
   const [isPinPicking, setIsPinPicking] = useState<boolean>(false);
   const [pinTarget, setPinTarget] = useState<'pickup' | 'drop'>('drop');
   const [pinLocation, setPinLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [selectedVehicle, setSelectedVehicle] = useState<string>('bike');
+  const [showTraffic, setShowTraffic] = useState<boolean>(true);
+  const [surgeModalVisible, setSurgeModalVisible] = useState<boolean>(false);
 
-  const firstName = currentUser?.name ? currentUser.name.split(' ')[0] : 'Passenger';
-  const initialLetter = (currentUser?.name || 'P')[0].toUpperCase();
+  const firstName = currentUser?.name ? currentUser.name.split(' ')[0] : 'Rider';
+  const initialLetter = (currentUser?.name || 'R')[0].toUpperCase();
+  const walletBalance = Number(currentUser?.walletBalance) || 0;
+  const nearbyDriversCount = Object.keys(availableDrivers || {}).length;
 
   return (
     <View style={styles.container}>
-      <MapComponent isPinPicking={isPinPicking} onPinChange={setPinLocation} pinTarget={pinTarget} />
+      <MapComponent
+        isPinPicking={isPinPicking}
+        onPinChange={setPinLocation}
+        showTraffic={showTraffic}
+      />
 
-      {/* Top Bar with Personalized Customer Greeting */}
-      <View style={styles.topBar}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <View style={styles.appBrand}>
-            <Ionicons name="car-sport" size={17} color="#fff" style={{ marginRight: 6 }} />
-            <Text style={styles.brandText}>DRIVEMATE</Text>
-          </View>
-        </View>
+      <HomeHeader
+        firstName={firstName}
+        initialLetter={initialLetter}
+        walletBalance={walletBalance}
+        currentAddress={currentAddress}
+        surgeStatus={surgeStatus}
+        isLoadingSurge={false}
+        nearbyDriversCount={nearbyDriversCount}
+        showTraffic={showTraffic}
+        onToggleTraffic={() => setShowTraffic((prev) => !prev)}
+        onOpenSurgeModal={() => setSurgeModalVisible(true)}
+        onOpenWallet={() => navigation.navigate('Wallet')}
+        onOpenNotifications={() => navigation.navigate('Notifications')}
+        onOpenProfile={() => navigation.navigate('Profile')}
+      />
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          {/* Quick Wallet Pill */}
-          <TouchableOpacity
-            style={styles.walletPill}
-            onPress={() => navigation.navigate('Wallet')}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="wallet-outline" size={15} color="#f72585" />
-            <Text style={styles.walletPillText}>
-              ₹{Math.max(0, Number(currentUser?.walletBalance) || 0).toFixed(0)}
-            </Text>
-          </TouchableOpacity>
-
-          {/* Quick Notifications Bell */}
-          <TouchableOpacity
-            style={styles.notificationBtn}
-            onPress={() => navigation.navigate('Notifications')}
-            activeOpacity={0.8}
-            accessibilityLabel="Notifications"
-          >
-            <Ionicons name="notifications-outline" size={18} color="#1a1a2e" />
-          </TouchableOpacity>
-
-          {/* Personalized Profile Pill */}
-          <TouchableOpacity
-            style={styles.profilePill}
-            onPress={() => navigation.navigate('Profile')}
-            activeOpacity={0.8}
-          >
-            <View style={styles.profileAvatarMini}>
-              <Text style={styles.avatarMiniText}>{initialLetter}</Text>
-            </View>
-            <Text style={styles.profilePillText} numberOfLines={1}>
-              Hi, {firstName}
-            </Text>
-            <Ionicons name="chevron-forward" size={13} color="#888" />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Floating Locate Me Button */}
-      {!isPinPicking && (
-        <TouchableOpacity
-          style={styles.floatingGpsBtn}
-          onPress={() => requestCurrentLocation()}
-          activeOpacity={0.8}
-          accessibilityLabel="Locate current position"
-        >
-          <Ionicons name="locate" size={24} color="#1a1a2e" />
-        </TouchableOpacity>
-      )}
-
-      {/* Bottom Panel Overlay */}
+      {/* Bottom Sheet Overlay + Docked Floating GPS Control */}
       <KeyboardAvoidingView
         style={styles.overlay}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         pointerEvents="box-none"
       >
+        {!isPinPicking && (appState === 'IDLE' || appState === 'ESTIMATING') && (
+          <View style={styles.floatingControlsBar} pointerEvents="box-none">
+            <TouchableOpacity
+              style={styles.floatingGpsBtn}
+              onPress={() => {
+                requestCurrentLocation();
+                refreshSurgeStatus();
+              }}
+              activeOpacity={0.82}
+              accessibilityLabel="Center on current GPS location"
+            >
+              <Ionicons name="locate" size={22} color="#0f172a" />
+            </TouchableOpacity>
+          </View>
+        )}
+
         <InputPanel
           isPinPicking={isPinPicking}
           setIsPinPicking={setIsPinPicking}
           pinLocation={pinLocation}
           pinTarget={pinTarget}
           setPinTarget={setPinTarget}
+          selectedVehicle={selectedVehicle}
+          setSelectedVehicle={setSelectedVehicle}
+          onOpenSurgeModal={() => setSurgeModalVisible(true)}
         />
-        <StatusPanel />
+
+        <StatusPanel
+          navigation={navigation}
+          selectedVehicle={selectedVehicle}
+          setSelectedVehicle={setSelectedVehicle}
+          onOpenSurgeModal={() => setSurgeModalVisible(true)}
+        />
       </KeyboardAvoidingView>
+
+      <SurgeBreakdownModal
+        visible={surgeModalVisible}
+        surgeStatus={surgeStatus}
+        onClose={() => setSurgeModalVisible(false)}
+        onRefresh={() => refreshSurgeStatus()}
+      />
     </View>
   );
 }
@@ -862,253 +995,260 @@ export default function CustomerDashboard({ navigation }: any) {
 // STYLES
 // ─────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f0f0f0' },
+  container: { flex: 1, backgroundColor: '#f1f5f9' },
   map: { flex: 1 },
   loader: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: 24,
   },
-  loaderText: { marginTop: 12, color: '#495057', fontSize: 14, fontWeight: '600' },
-
-  // Top Bar
-  topBar: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 54 : 44,
-    left: 16,
-    right: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    zIndex: 20,
-  },
-  notificationBtn: {
-    backgroundColor: '#fff',
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+  loaderPulse: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: 'rgba(247, 37, 133, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    borderWidth: 1,
-    borderColor: '#f0f0f0',
   },
-  appBrand: {
-    backgroundColor: '#f72585',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
-    elevation: 4,
-  },
-  brandText: { color: '#fff', fontWeight: '900', fontSize: 15, letterSpacing: 1.5 },
-  logoutBtn: {
-    backgroundColor: '#fff',
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 20,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  logoutText: { fontWeight: '700', color: '#1a1a2e', fontSize: 13 },
+  loaderText: { marginTop: 14, color: '#0f172a', fontSize: 16, fontWeight: '800' },
+  loaderSub: { marginTop: 4, color: '#64748b', fontSize: 12.5, fontWeight: '500' },
 
-  // Floating GPS Button
-  floatingGpsBtn: {
-    position: 'absolute',
-    right: 18,
-    bottom: 340,
-    backgroundColor: '#fff',
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    zIndex: 15,
-  },
-
-  // Panel Overlay
   overlay: { position: 'absolute', bottom: 0, width: '100%', zIndex: 30 },
+  floatingControlsBar: {
+    alignItems: 'flex-end',
+    paddingHorizontal: 16,
+    marginBottom: 10,
+  },
+  floatingGpsBtn: {
+    backgroundColor: '#ffffff',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.16,
+    shadowRadius: 8,
+    elevation: 7,
+  },
   panel: {
-    backgroundColor: '#fff',
-    paddingHorizontal: 20,
-    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
-    paddingTop: 12,
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 18,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 18,
+    paddingTop: 10,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    elevation: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+    elevation: 22,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.14,
     shadowRadius: 16,
   },
-  centerPanel: { alignItems: 'center', paddingTop: 24, paddingBottom: 36 },
+  centerPanel: { alignItems: 'center', paddingTop: 22, paddingBottom: 30 },
   handle: {
-    width: 44,
+    width: 42,
     height: 4,
-    backgroundColor: '#dee2e6',
+    backgroundColor: '#cbd5e1',
     borderRadius: 4,
     alignSelf: 'center',
-    marginBottom: 14,
+    marginBottom: 12,
   },
 
   warningBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff3e0',
+    backgroundColor: '#fef3c7',
     padding: 10,
-    borderRadius: 8,
-    marginBottom: 12,
+    borderRadius: 12,
+    marginBottom: 10,
     gap: 8,
   },
-  warningText: { fontSize: 12, color: '#e65100', flex: 1, fontWeight: '500' },
+  warningText: { fontSize: 12, color: '#92400e', flex: 1, fontWeight: '600' },
 
   panelHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: 10,
   },
-  panelTitle: { fontSize: 20, fontWeight: '800', color: '#1a1a2e' },
-  panelSub: { fontSize: 12, color: '#888', marginTop: 2 },
-
-  // Inputs & Swap
-  inputsContainer: {
-    marginBottom: 12,
-  },
-  inputItemRow: {
-    marginVertical: 2,
-    zIndex: 10,
-  },
-  swapRow: {
+  panelTitle: { fontSize: 19, fontWeight: '900', color: '#0f172a', letterSpacing: -0.3 },
+  panelSub: { fontSize: 11.5, color: '#64748b', marginTop: 1, fontWeight: '600' },
+  headerSurgeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: -6,
-    zIndex: 20,
+    backgroundColor: '#f72585',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    gap: 4,
   },
-  connectorLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#e9ecef',
+  headerSurgeBadgeText: {
+    color: '#ffffff',
+    fontSize: 11.5,
+    fontWeight: '800',
   },
-  swapBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#f1f3f5',
+
+  quickTierScroll: {
+    marginBottom: 12,
+  },
+  miniVehiclePill: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#dee2e6',
-    marginHorizontal: 12,
-    elevation: 2,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1.5,
+    borderColor: '#e2e8f0',
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    borderRadius: 14,
+    gap: 7,
   },
-  gpsSmallBtn: {
-    padding: 6,
-    marginLeft: 4,
+  miniVehiclePillActive: {
+    backgroundColor: '#0f172a',
+    borderColor: '#0f172a',
   },
-  mapPinSmallBtn: {
-    padding: 6,
-    marginLeft: 4,
+  miniVehicleTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  miniVehicleSub: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#64748b',
   },
 
   findBtn: {
-    backgroundColor: '#1a1a2e',
-    borderRadius: 14,
-    paddingVertical: 16,
+    backgroundColor: '#0f172a',
+    borderRadius: 16,
+    paddingVertical: 15,
     alignItems: 'center',
-    marginTop: 6,
-    elevation: 3,
+    justifyContent: 'center',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 6,
   },
-  findBtnText: { color: '#fff', fontWeight: '800', fontSize: 16, letterSpacing: 0.5 },
+  findBtnSurge: {
+    backgroundColor: '#f72585',
+    shadowColor: '#f72585',
+  },
+  findBtnText: { color: '#ffffff', fontWeight: '800', fontSize: 15, letterSpacing: 0.2 },
 
-  // Route Summary in Estimating State
+  // Estimating State
   routeSummary: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 14,
+    backgroundColor: '#f8fafc',
+    borderRadius: 14,
+    padding: 11,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
   routePoint: { flexDirection: 'row', alignItems: 'center' },
-  routeDot: { width: 10, height: 10, borderRadius: 5, marginRight: 10 },
+  routeDot: { width: 9, height: 9, borderRadius: 4.5, marginRight: 10 },
   routeLine: {
     width: 2,
-    height: 12,
-    backgroundColor: '#dee2e6',
-    marginLeft: 4,
+    height: 11,
+    backgroundColor: '#cbd5e1',
+    marginLeft: 3.5,
     marginVertical: 2,
   },
-  routeAddr: { fontSize: 14, color: '#333', fontWeight: '600', flex: 1 },
+  routeAddr: { fontSize: 13.5, color: '#1e293b', fontWeight: '700', flex: 1 },
 
-  // Stats Row
   statsRow: {
     flexDirection: 'row',
-    backgroundColor: '#f8f9fa',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 16,
+    backgroundColor: '#f8fafc',
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    marginBottom: 12,
     alignItems: 'center',
     justifyContent: 'space-around',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
-  statItem: { alignItems: 'center' },
-  statValue: { fontSize: 17, fontWeight: '800', color: '#1a1a2e' },
-  statLabel: { fontSize: 11, color: '#888', marginTop: 2 },
-  statDivider: { width: 1, height: 28, backgroundColor: '#dee2e6' },
+  statItem: { alignItems: 'center', flex: 1 },
+  statValue: { fontSize: 15.5, fontWeight: '900', color: '#0f172a' },
+  statLabel: { fontSize: 11, color: '#64748b', marginTop: 1, fontWeight: '600' },
+  statDivider: { width: 1, height: 26, backgroundColor: '#e2e8f0' },
 
-  // Vehicle Picker
-  sectionLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#888',
-    letterSpacing: 1,
-    marginBottom: 10,
-    textTransform: 'uppercase',
-  },
-  vehicleScroll: { marginBottom: 16 },
-  vehicleCard: {
-    width: 95,
+  sectionHeaderRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: '#e9ecef',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  sectionLabel: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#64748b',
+    letterSpacing: 0.8,
+  },
+  walletHintText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#f72585',
+  },
+  vehicleScroll: { marginBottom: 14 },
+  vehicleCard: {
+    width: 112,
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: '#e2e8f0',
     marginRight: 10,
-    backgroundColor: '#fdfdfd',
+    backgroundColor: '#ffffff',
   },
   vehicleCardSelected: {
-    backgroundColor: '#f72585',
+    backgroundColor: '#0f172a',
     borderColor: '#f72585',
   },
-  vehicleEmoji: { fontSize: 26, marginBottom: 4 },
-  vehicleLabel: { fontSize: 13, fontWeight: '700', color: '#1a1a2e' },
-  vehicleLabelSelected: { color: '#fff' },
-  vehicleFare: { fontSize: 15, fontWeight: '800', color: '#f72585', marginTop: 4 },
-  vehicleEta: { fontSize: 10, color: '#888', marginTop: 2 },
-
-  // Action Buttons
-  actionRow: {
-    flexDirection: 'row',
-    gap: 12,
+  vehicleTagBadge: {
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginBottom: 4,
   },
+  vehicleTagText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#475569',
+    letterSpacing: 0.4,
+  },
+  vehicleEmoji: { fontSize: 26, marginBottom: 2 },
+  vehicleLabel: { fontSize: 13.5, fontWeight: '800', color: '#0f172a' },
+  vehicleLabelSelected: { color: '#ffffff' },
+  vehicleSeats: { fontSize: 10.5, color: '#64748b', fontWeight: '600', marginBottom: 4 },
+  farePairRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  vehicleFare: { fontSize: 16, fontWeight: '900', color: '#f72585' },
+  baseFareStrike: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#94a3b8',
+    textDecorationLine: 'line-through',
+  },
+  vehicleEta: { fontSize: 10.5, color: '#64748b', marginTop: 2, fontWeight: '600' },
+
+  actionRow: { flexDirection: 'row', gap: 10 },
   cancelOutlineBtn: {
-    flex: 0.35,
+    flex: 0.34,
     borderWidth: 1.5,
-    borderColor: '#dee2e6',
+    borderColor: '#cbd5e1',
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cancelOutlineText: { color: '#666', fontWeight: '700' },
+  cancelOutlineText: { color: '#475569', fontWeight: '800', fontSize: 14 },
   confirmBtn: {
     flex: 1,
     backgroundColor: '#f72585',
@@ -1116,44 +1256,134 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#f72585',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  confirmBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+  confirmBtnText: { color: '#ffffff', fontWeight: '800', fontSize: 15 },
 
-  // Status & Searching
-  pulseWrap: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: 'rgba(247, 37, 133, 0.08)',
+  // Searching Radar
+  radarContainer: {
+    width: 84,
+    height: 84,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 10,
+  },
+  radarRing: {
+    position: 'absolute',
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: '#f72585',
+  },
+  radarCenter: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: 'rgba(247, 37, 133, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(247, 37, 133, 0.35)',
+  },
+  statusText: { fontSize: 18, fontWeight: '800', color: '#0f172a', marginTop: 6 },
+  statusSub: { fontSize: 13, color: '#64748b', marginTop: 4, fontWeight: '600', textAlign: 'center' },
+  lockedSurgeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff1f5',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 6,
+    marginTop: 12,
+  },
+  lockedSurgeText: {
+    fontSize: 12,
+    color: '#be123c',
+    fontWeight: '700',
+  },
+  cancelTextBtn: {
+    marginTop: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#fef2f2',
+  },
+  cancelTextBtnText: { color: '#dc2626', fontWeight: '800', fontSize: 13.5 },
+
+  // Active Ride
+  rideIdTopBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  rideIdTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f3ff',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ddd6fe',
+  },
+  rideIdTagLabel: { fontSize: 10, fontWeight: '800', color: '#7c3aed', marginRight: 4 },
+  rideIdTagText: { fontSize: 12, fontWeight: '800', color: '#0f172a', letterSpacing: 0.5 },
+  inRideSupportBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#7c3aed',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 18,
+    gap: 5,
+  },
+  inRideSupportBtnText: { color: '#ffffff', fontSize: 12, fontWeight: '700' },
+
+  statusBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 12,
   },
-  statusText: { fontSize: 18, fontWeight: '800', color: '#1a1a2e', marginTop: 8 },
-  statusSub: { fontSize: 13, color: '#888', marginTop: 4 },
-  cancelTextBtn: { marginTop: 18, paddingVertical: 8 },
-  cancelTextBtnText: { color: '#e63946', fontWeight: '700', fontSize: 14 },
-
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#f1f5f9',
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 20,
-    marginBottom: 14,
+    borderRadius: 16,
   },
   statusDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
-  statusBadgeText: { fontSize: 13, fontWeight: '700', color: '#1a1a2e' },
+  statusBadgeText: { fontSize: 12.5, fontWeight: '800', color: '#0f172a' },
+  miniSurgePill: {
+    backgroundColor: '#fff1f5',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#fecdd3',
+  },
+  miniSurgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#e11d48',
+  },
 
   driverCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8f9fa',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 14,
+    backgroundColor: '#f8fafc',
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
   driverAvatar: {
     width: 46,
@@ -1164,85 +1394,66 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
-  avatarInitial: { color: '#fff', fontSize: 18, fontWeight: '800' },
-  driverName: { fontSize: 16, fontWeight: '800', color: '#1a1a2e' },
-  driverVehicle: { fontSize: 12, color: '#666', marginTop: 2 },
-  driverPhone: { fontSize: 12, color: '#2b9348', marginTop: 4, fontWeight: '600' },
-  otpBox: {
-    backgroundColor: '#1a1a2e',
+  avatarInitial: { color: '#ffffff', fontSize: 18, fontWeight: '800' },
+  driverName: { fontSize: 15.5, fontWeight: '800', color: '#0f172a' },
+  driverVehicle: { fontSize: 12, color: '#64748b', marginTop: 2, fontWeight: '600' },
+  driverActionLinks: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 6,
+  },
+  quickContactChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ecfdf5',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
     borderRadius: 10,
+    gap: 4,
+  },
+  quickContactText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#059669',
+  },
+  otpBox: {
+    backgroundColor: '#0f172a',
+    borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 8,
     alignItems: 'center',
   },
-  otpLabel: { fontSize: 9, color: 'rgba(255,255,255,0.7)', fontWeight: '700' },
-  otpValue: { fontSize: 18, fontWeight: '900', color: '#06d6a0', letterSpacing: 2 },
+  otpLabel: { fontSize: 9, color: 'rgba(255,255,255,0.7)', fontWeight: '800' },
+  otpValue: { fontSize: 18, fontWeight: '900', color: '#34d399', letterSpacing: 2 },
 
   tripRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    backgroundColor: '#f8f9fa',
-    borderRadius: 10,
-    padding: 12,
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    gap: 10,
   },
   tripItem: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
-  tripIcon: { fontSize: 16 },
-  tripText: { fontSize: 13, fontWeight: '600', color: '#333' },
-
-  // In-Ride Top Bar & Support
-  rideIdTopBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  rideIdTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+  tripText: { fontSize: 13, fontWeight: '700', color: '#1e293b', flex: 1 },
+  tripFareChip: {
+    backgroundColor: '#0f172a',
     paddingHorizontal: 10,
     paddingVertical: 5,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.25)',
+    borderRadius: 10,
   },
-  rideIdTagLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#8b5cf6',
-    marginRight: 4,
-  },
-  rideIdTagText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#1a1a2e',
-    letterSpacing: 0.5,
-  },
-  inRideSupportBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#8b5cf6',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    gap: 5,
-    elevation: 2,
-    shadowColor: '#8b5cf6',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-  },
-  inRideSupportBtnText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '700',
-  },
+  tripFareValue: { color: '#ffffff', fontWeight: '800', fontSize: 13.5 },
+
   waitTimerBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff0f5',
+    backgroundColor: '#fff1f5',
     borderWidth: 1,
-    borderColor: '#f72585',
+    borderColor: '#fecdd3',
     paddingHorizontal: 12,
     paddingVertical: 9,
     borderRadius: 12,
@@ -1250,99 +1461,20 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   waitTimerBoxExpired: {
-    backgroundColor: '#ffebee',
-    borderColor: '#e63946',
+    backgroundColor: '#fef2f2',
+    borderColor: '#fca5a5',
   },
-  waitTimerText: {
-    fontSize: 13,
-    color: '#1a1a2e',
-    fontWeight: '600',
-  },
-  waitTimerBold: {
-    fontWeight: '800',
-    color: '#f72585',
-  },
-  waitTimerExpiredText: {
-    fontSize: 12,
-    color: '#e63946',
-    fontWeight: '700',
-  },
-  // Quick Wallet Pill
-  walletPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 20,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    gap: 4,
-  },
-  walletPillText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#1a1a2e',
-  },
-  // Profile Pill & Quick Destination Chips Styles
-  profilePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
-    paddingLeft: 4,
-    paddingRight: 10,
-    paddingVertical: 4,
-    borderRadius: 24,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    gap: 6,
-    maxWidth: 160,
-  },
-  profileAvatarMini: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#f72585',
+  waitTimerText: { fontSize: 13, color: '#0f172a', fontWeight: '600' },
+  waitTimerBold: { fontWeight: '800', color: '#f72585' },
+  waitTimerExpiredText: { fontSize: 12, color: '#dc2626', fontWeight: '700' },
+
+  completeIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#ecfdf5',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  avatarMiniText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  profilePillText: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: '#1a1a2e',
-    flexShrink: 1,
-  },
-  quickChipsScroll: {
-    marginTop: 4,
-    marginBottom: 14,
-  },
-  quickChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f4f5f7',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 20,
-    marginRight: 8,
-    gap: 5,
-  },
-  quickChipEmoji: {
-    fontSize: 13,
-  },
-  quickChipText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#374151',
+    marginBottom: 8,
   },
 });

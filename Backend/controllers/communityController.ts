@@ -132,7 +132,7 @@ export const getCommunityPosts = asyncHandler(async (req: AuthenticatedRequest, 
     ];
   }
 
-  let posts = await prisma.communityRidePost.findMany({
+  const posts = await prisma.communityRidePost.findMany({
     where: whereClause,
     orderBy: { createdAt: 'desc' },
     include: {
@@ -152,76 +152,6 @@ export const getCommunityPosts = asyncHandler(async (req: AuthenticatedRequest, 
       },
     },
   });
-
-  // Seed sample posts if completely empty in database
-  if (posts.length === 0 && (!search || search === '')) {
-    // Get or create a sample author
-    let sampleCustomer = await prisma.customer.findFirst();
-    if (!sampleCustomer) {
-      sampleCustomer = await prisma.customer.create({
-        data: {
-          id: generateId(),
-          name: 'Rohan Deshmukh',
-          firstName: 'Rohan',
-          lastName: 'Deshmukh',
-          email: 'rohan.deshmukh@google.com',
-          phone: '+91 98845 11029',
-          profession: 'Staff Software Architect',
-          company: 'Google India',
-          city: 'Bangalore',
-          purpose: 'Carpooling & Community',
-          isEmailVerified: true,
-        },
-      });
-    }
-
-    for (const seed of SEED_COMMUNITY_POSTS) {
-      if (!city || city === 'all' || city === 'All Cities' || seed.city.toLowerCase() === String(city).toLowerCase()) {
-        await prisma.communityRidePost.create({
-          data: {
-            id: generateId(),
-            authorId: sampleCustomer.id,
-            authorName: seed.authorName,
-            authorProfession: seed.authorProfession,
-            authorCompany: seed.authorCompany,
-            authorAvatar: seed.authorAvatar,
-            city: seed.city,
-            fromLocation: seed.fromLocation,
-            toLocation: seed.toLocation,
-            departureTime: seed.departureTime,
-            returnTime: seed.returnTime,
-            days: seed.days,
-            vehicleType: seed.vehicleType,
-            seatsAvailable: seed.seatsAvailable,
-            fuelShareCost: seed.fuelShareCost,
-            preferences: seed.preferences,
-            status: 'active',
-          },
-        });
-      }
-    }
-
-    posts = await prisma.communityRidePost.findMany({
-      where: whereClause,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        author: {
-          select: {
-            id: true,
-            name: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-            phone: true,
-            profession: true,
-            company: true,
-            city: true,
-            avatarUrl: true,
-          },
-        },
-      },
-    });
-  }
 
   res.status(200).json(new ApiResponse(200, posts, 'Community ride posts retrieved successfully'));
 });

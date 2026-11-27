@@ -22,6 +22,8 @@ interface Props {
   rightAction?: React.ReactNode;
   userLocationBias?: { lat: number; lng: number };
   autoFocus?: boolean;
+  dropdownDirection?: 'up' | 'down';
+  inputRowStyle?: any;
 }
 
 export default function PlaceAutocompleteInput({
@@ -34,6 +36,8 @@ export default function PlaceAutocompleteInput({
   rightAction,
   userLocationBias,
   autoFocus = false,
+  dropdownDirection = 'down',
+  inputRowStyle,
 }: Props) {
   const { searchPlaces, getPlaceDetails } = useCustomer();
   const [suggestions, setSuggestions] = useState<AutocompleteItem[]>([]);
@@ -93,13 +97,7 @@ export default function PlaceAutocompleteInput({
           lng: details.lng,
         });
       } else {
-        // Fallback using text description
-        onSelect({
-          name: item.mainText,
-          address: item.fullText,
-          lat: 17.385,
-          lng: 78.4867,
-        });
+        setSuggestions([]);
       }
     } finally {
       setIsResolving(false);
@@ -116,8 +114,8 @@ export default function PlaceAutocompleteInput({
   };
 
   return (
-    <View style={styles.container}>
-      <View style={[styles.inputRow, isFocused && styles.inputRowFocused]}>
+    <View style={[styles.container, isFocused && { zIndex: 999 }]}>
+      <View style={[styles.inputRow, inputRowStyle, isFocused && styles.inputRowFocused]}>
         <View style={[styles.dot, { backgroundColor: dotColor }]} />
         <TextInput
           style={styles.input}
@@ -147,9 +145,9 @@ export default function PlaceAutocompleteInput({
         {rightAction}
       </View>
 
-      {/* Dropdown Suggestions List beneath the active input */}
+      {/* Dropdown Suggestions List beneath/above the active input */}
       {isFocused && (suggestions.length > 0 || (hasSearched && !isLoading && suggestions.length === 0)) && (
-        <View style={styles.dropdown}>
+        <View style={[styles.dropdown, dropdownDirection === 'up' ? styles.dropdownUp : styles.dropdownDown]}>
           {suggestions.length > 0 ? (
             <FlatList
               data={suggestions}
@@ -240,7 +238,6 @@ const styles = StyleSheet.create({
   },
   dropdown: {
     position: 'absolute',
-    top: 54,
     left: 0,
     right: 0,
     maxHeight: 230,
@@ -257,10 +254,16 @@ const styles = StyleSheet.create({
         shadowRadius: 10,
       },
       android: {
-        elevation: 10,
+        elevation: 14,
       },
     }),
     overflow: 'hidden',
+  },
+  dropdownDown: {
+    top: 54,
+  },
+  dropdownUp: {
+    bottom: 54,
   },
   suggestionItem: {
     flexDirection: 'row',
